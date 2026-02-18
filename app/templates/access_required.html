@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block page_header %}
+<section class="page-head">
+  <h1>Access Required</h1>
+  <p>이 서비스는 공유 링크 또는 관리자 링크를 통해서만 접근할 수 있습니다.</p>
+</section>
+{% endblock %}
+
+{% block content %}
+<section class="card">
+  <div class="card-head">
+    <h3>How To Access</h3>
+    <p>링크를 전달받았다면 해당 URL을 그대로 여세요.</p>
+  </div>
+  <p class="section-note">Viewer 링크 예시: <code>/access/view/&lt;viewer_token&gt;</code></p>
+  <p class="section-note">Admin 링크 예시: <code>/access/admin/&lt;admin_token&gt;</code></p>
+  <p class="small">올바른 링크가 없으면 접근할 수 없습니다.</p>
+</section>
+{% endblock %}
+

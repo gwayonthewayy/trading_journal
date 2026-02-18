@@ -1,0 +1,124 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#1f5473" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>{{ title or "Trade Journal" }}</title>
+  <link rel="manifest" href="/static/manifest.webmanifest" />
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  {% set path = request.url.path %}
+  {% set role = auth_role if auth_role is defined else None %}
+  <div class="bg-accent bg-accent-a"></div>
+  <div class="bg-accent bg-accent-b"></div>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a href="{{ '/journal' if role else '/access' }}" class="brand">
+        <span class="brand-mark">TJ</span>
+        <span>
+          <strong>Trade Journal</strong>
+          <small>Execution and Review</small>
+        </span>
+      </a>
+
+      {% if role %}
+        <nav class="main-nav" aria-label="Primary">
+          <a href="/journal" class="{% if path.startswith('/journal') %}active{% endif %}">Journal</a>
+          <a href="/portfolio" class="{% if path.startswith('/portfolio') %}active{% endif %}">Portfolio</a>
+          <a href="/stats" class="{% if path.startswith('/stats') %}active{% endif %}">Stats</a>
+        </nav>
+      {% else %}
+        <div></div>
+      {% endif %}
+
+      <div class="topbar-actions">
+        {% if role == "admin" %}
+          <nav class="export-nav" aria-label="Export">
+            <a href="/export/events.csv">Events CSV</a>
+            <a href="/export/lots.csv">Lots CSV</a>
+            <a href="/export/sell_allocations.csv">Alloc CSV</a>
+          </nav>
+        {% endif %}
+        {% if role %}
+          <div class="auth-pill">{{ role|upper }}</div>
+          <form method="post" action="/logout" class="logout-form">
+            <button type="submit" class="secondary">Logout</button>
+          </form>
+        {% endif %}
+      </div>
+    </div>
+  </header>
+  <div id="install-banner" class="install-banner" hidden>
+    <div class="install-banner-inner">
+      <strong>Trade Journal을 홈화면에 추가</strong>
+      <p id="install-banner-text" class="small">빠르게 실행하려면 홈화면에 추가하세요.</p>
+      <div class="install-banner-actions">
+        <button id="install-banner-install-btn" type="button">Install</button>
+        <button id="install-banner-close-btn" type="button" class="secondary">Later</button>
+      </div>
+    </div>
+  </div>
+  <main class="container">
+    {% block page_header %}{% endblock %}
+    {% block content %}{% endblock %}
+  </main>
+  <script>
+    (() => {
+      const banner = document.getElementById("install-banner");
+      const text = document.getElementById("install-banner-text");
+      const installBtn = document.getElementById("install-banner-install-btn");
+      const closeBtn = document.getElementById("install-banner-close-btn");
+      if (!banner || !text || !installBtn || !closeBtn) return;
+
+      const DISMISS_KEY = "tj_install_banner_dismissed_v1";
+      if (localStorage.getItem(DISMISS_KEY) === "1") return;
+
+      let deferredPrompt = null;
+      const ua = navigator.userAgent || "";
+      const isIOS = /iPhone|iPad|iPod/i.test(ua);
+      const isStandalone = window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true;
+      if (isStandalone) return;
+
+      function showBanner(message, installAvailable) {
+        text.textContent = message;
+        installBtn.hidden = !installAvailable;
+        banner.hidden = false;
+      }
+
+      closeBtn.addEventListener("click", () => {
+        banner.hidden = true;
+        localStorage.setItem(DISMISS_KEY, "1");
+      });
+
+      installBtn.addEventListener("click", async () => {
+        if (!deferredPrompt) return;
+        deferredPrompt.prompt();
+        try { await deferredPrompt.userChoice; } catch (_) {}
+        deferredPrompt = null;
+        banner.hidden = true;
+      });
+
+      window.addEventListener("beforeinstallprompt", (e) => {
+        e.preventDefault();
+        deferredPrompt = e;
+        showBanner("Install 버튼으로 홈화면 앱 아이콘을 추가하세요.", true);
+      });
+
+      if (isIOS) {
+        showBanner("iPhone: 공유 버튼 -> '홈 화면에 추가'를 눌러 설치하세요.", false);
+      }
+
+      if ("serviceWorker" in navigator) {
+        window.addEventListener("load", () => {
+          navigator.serviceWorker.register("/static/sw.js").catch(() => {});
+        });
+      }
+    })();
+  </script>
+</body>
+</html>
+

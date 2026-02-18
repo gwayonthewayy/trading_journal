@@ -1,0 +1,967 @@
+{% extends "base.html" %}
+{% block page_header %}
+<section class="page-head">
+  <h1>Performance Stats</h1>
+  <p>Method 1은 단순 자산대비 수익률, Method 2는 입출금 시점을 가중한 자본(base) 대비 수익률입니다.</p>
+</section>
+{% endblock %}
+
+{% block content %}
+<div class="grid">
+  <section class="card">
+    <div class="card-head">
+      <h3>Current Week</h3>
+    </div>
+    {% if data.current.weekly %}
+      <p><strong>{{ data.current.weekly.period_label }}</strong></p>
+      <p>Trade Count: {{ data.current.weekly.trade_count }}</p>
+      <p>MDD: {{ "%.2f"|format(data.current.weekly.mdd_pct) }}%</p>
+      <p>Return M1: {{ "%.2f"|format(data.current.weekly.return_method1_pct) if data.current.weekly.return_method1_pct is not none else "N/A" }}%</p>
+      <p>Return M2: {{ "%.2f"|format(data.current.weekly.return_method2_pct) if data.current.weekly.return_method2_pct is not none else "N/A" }}%</p>
+      <p>Realized PnL: {{ "%.2f"|format(data.current.weekly.realized_pnl) }}</p>
+      <p>Win Rate: {{ "%.2f"|format(data.current.weekly.win_rate_pct) if data.current.weekly.win_rate_pct is not none else "N/A" }}%</p>
+      <p>BE Rate: {{ "%.2f"|format(data.current.weekly.be_rate_pct) if data.current.weekly.be_rate_pct is not none else "N/A" }}%</p>
+    {% else %}
+      <p>No data</p>
+    {% endif %}
+  </section>
+
+  <section class="card">
+    <div class="card-head">
+      <h3>Current Month</h3>
+    </div>
+    {% if data.current.monthly %}
+      <p><strong>{{ data.current.monthly.period_label }}</strong></p>
+      <p>Trade Count: {{ data.current.monthly.trade_count }}</p>
+      <p>MDD: {{ "%.2f"|format(data.current.monthly.mdd_pct) }}%</p>
+      <p>Return M1: {{ "%.2f"|format(data.current.monthly.return_method1_pct) if data.current.monthly.return_method1_pct is not none else "N/A" }}%</p>
+      <p>Return M2: {{ "%.2f"|format(data.current.monthly.return_method2_pct) if data.current.monthly.return_method2_pct is not none else "N/A" }}%</p>
+      <p>Realized PnL: {{ "%.2f"|format(data.current.monthly.realized_pnl) }}</p>
+      <p>Win Rate: {{ "%.2f"|format(data.current.monthly.win_rate_pct) if data.current.monthly.win_rate_pct is not none else "N/A" }}%</p>
+      <p>BE Rate: {{ "%.2f"|format(data.current.monthly.be_rate_pct) if data.current.monthly.be_rate_pct is not none else "N/A" }}%</p>
+    {% else %}
+      <p>No data</p>
+    {% endif %}
+  </section>
+
+  <section class="card">
+    <div class="card-head">
+      <h3>Current Year</h3>
+    </div>
+    {% if data.current.yearly %}
+      <p><strong>{{ data.current.yearly.period_label }}</strong></p>
+      <p>Trade Count: {{ data.current.yearly.trade_count }}</p>
+      <p>MDD: {{ "%.2f"|format(data.current.yearly.mdd_pct) }}%</p>
+      <p>Return M1: {{ "%.2f"|format(data.current.yearly.return_method1_pct) if data.current.yearly.return_method1_pct is not none else "N/A" }}%</p>
+      <p>Return M2: {{ "%.2f"|format(data.current.yearly.return_method2_pct) if data.current.yearly.return_method2_pct is not none else "N/A" }}%</p>
+      <p>Realized PnL: {{ "%.2f"|format(data.current.yearly.realized_pnl) }}</p>
+      <p>Win Rate: {{ "%.2f"|format(data.current.yearly.win_rate_pct) if data.current.yearly.win_rate_pct is not none else "N/A" }}%</p>
+      <p>BE Rate: {{ "%.2f"|format(data.current.yearly.be_rate_pct) if data.current.yearly.be_rate_pct is not none else "N/A" }}%</p>
+    {% else %}
+      <p>No data</p>
+    {% endif %}
+  </section>
+</div>
+
+<section class="card">
+  <div class="card-head">
+    <h3>Chart Range Filter</h3>
+    <p>기간과 벤치마크를 바꿔 수익률 곡선을 비교합니다.</p>
+  </div>
+  <form id="chart-range-form">
+    <div class="form-row">
+      <label>
+        Start Date
+        <input id="chart-start-date" type="date" />
+      </label>
+      <label>
+        End Date
+        <input id="chart-end-date" type="date" />
+      </label>
+      <label>
+        Benchmark
+        <select id="benchmark-symbol">
+          {% for symbol in data.benchmark_symbols %}
+          <option value="{{ symbol }}" {% if symbol == "SPY" %}selected{% endif %}>{{ symbol }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <div class="chart-mode-block">
+        <span class="small">Mode</span>
+        <div class="chart-mode-toggle" role="group" aria-label="Chart mode">
+          <button id="chart-mode-period" class="chart-mode-btn is-active" type="button" data-mode="period">Period</button>
+          <button id="chart-mode-cumulative" class="chart-mode-btn" type="button" data-mode="cumulative">Cumulative</button>
+        </div>
+      </div>
+      <button id="chart-apply-btn" type="submit">Apply</button>
+      <button id="chart-reset-btn" class="secondary" type="button">Reset</button>
+    </div>
+    <div id="chart-range-error" class="error"></div>
+    <div id="chart-range-meta" class="small"></div>
+  </form>
+</section>
+
+<section class="card">
+  <h3>Return Chart (Daily)</h3>
+  <p class="small">X: 기간, Y: 수익률(%). 주황(단순), 청록(시간가중), 녹색(벤치마크)</p>
+  <div id="chart-daily" class="chart-wrap"></div>
+</section>
+
+<section class="card">
+  <h3>Return Chart (Weekly)</h3>
+  <p class="small">X: 기간, Y: 수익률(%). 주황(단순), 청록(시간가중), 녹색(벤치마크)</p>
+  <div id="chart-weekly" class="chart-wrap"></div>
+</section>
+
+<section class="card">
+  <h3>Return Chart (Monthly)</h3>
+  <p class="small">X: 기간, Y: 수익률(%). 주황(단순), 청록(시간가중), 녹색(벤치마크)</p>
+  <div id="chart-monthly" class="chart-wrap"></div>
+</section>
+
+<section class="card">
+  <h3>Return Chart (Yearly)</h3>
+  <p class="small">X: 기간, Y: 수익률(%). 주황(단순), 청록(시간가중), 녹색(벤치마크)</p>
+  <div id="chart-yearly" class="chart-wrap"></div>
+</section>
+
+<section class="card">
+  <div class="card-head">
+    <h3>FX Rate Chart</h3>
+    <p>Selected currency to base currency rate trend</p>
+  </div>
+  <div class="form-row">
+    <label>
+      Currency
+      <select id="fx-currency">
+        {% for cur in data.currencies %}
+        <option value="{{ cur }}">{{ cur }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>
+      Days
+      <select id="fx-days">
+        <option value="30">30</option>
+        <option value="90" selected>90</option>
+        <option value="180">180</option>
+      </select>
+    </label>
+    <button id="fx-load-btn" type="button">Load FX</button>
+  </div>
+  <div id="fx-chart-meta" class="small"></div>
+  <div id="fx-chart" class="chart-wrap"></div>
+</section>
+
+<section class="card">
+  <div class="card-head">
+    <h3>Return Distribution</h3>
+    <p>내 수익률 값의 분포를 구간별 빈도로 확인합니다.</p>
+  </div>
+  <div class="form-row">
+    <label>
+      Granularity
+      <select id="dist-granularity">
+        <option value="daily">Daily</option>
+        <option value="weekly" selected>Weekly</option>
+        <option value="monthly">Monthly</option>
+        <option value="yearly">Yearly</option>
+      </select>
+    </label>
+    <label>
+      Metric
+      <select id="dist-method">
+        <option value="return_method1_pct">Method 1 (단순)</option>
+        <option value="return_method2_pct" selected>Method 2 (시간가중)</option>
+      </select>
+    </label>
+  </div>
+  <div id="dist-summary" class="small"></div>
+  <div id="chart-distribution" class="chart-wrap"></div>
+</section>
+
+<section class="card">
+  <h3>Weekly History</h3>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Period</th>
+          <th>Trades</th>
+          <th>Sells</th>
+          <th>Win Rate</th>
+          <th>BE Rate</th>
+          <th>Return M1</th>
+          <th>Return M2</th>
+          <th>MDD</th>
+          <th>Realized PnL</th>
+          <th>Deposit</th>
+          <th>Withdraw</th>
+          <th>Asset Start</th>
+          <th>Asset End</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in data.weekly %}
+        <tr>
+          <td>{{ row.period_key }}</td>
+          <td>{{ row.trade_count }}</td>
+          <td>{{ row.sell_count }}</td>
+          <td>{{ "%.2f"|format(row.win_rate_pct) if row.win_rate_pct is not none else "N/A" }}%</td>
+          <td>{{ "%.2f"|format(row.be_rate_pct) if row.be_rate_pct is not none else "N/A" }}%</td>
+          <td>{{ "%.2f"|format(row.return_method1_pct) if row.return_method1_pct is not none else "N/A" }}%</td>
+          <td>{{ "%.2f"|format(row.return_method2_pct) if row.return_method2_pct is not none else "N/A" }}%</td>
+          <td>{{ "%.2f"|format(row.mdd_pct) }}%</td>
+          <td>{{ "%.2f"|format(row.realized_pnl) }}</td>
+          <td>{{ "%.2f"|format(row.deposit_sum) }}</td>
+          <td>{{ "%.2f"|format(row.withdraw_sum) }}</td>
+          <td>{{ "%.2f"|format(row.asset_start) }}</td>
+          <td>{{ "%.2f"|format(row.asset_end) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="card">
+  <h3>Monthly History</h3>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Period</th>
+          <th>Trades</th>
+          <th>Sells</th>
+          <th>Win Rate</th>
+          <th>BE Rate</th>
+          <th>Return M1</th>
+          <th>Return M2</th>
+          <th>MDD</th>
+          <th>Realized PnL</th>
+          <th>Deposit</th>
+          <th>Withdraw</th>
+          <th>Asset Start</th>
+          <th>Asset End</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in data.monthly %}
+        <tr>
+          <td>{{ row.period_key }}</td>
+          <td>{{ row.trade_count }}</td>
+          <td>{{ row.sell_count }}</td>
+          <td>{{ "%.2f"|format(row.win_rate_pct) if row.win_rate_pct is not none else "N/A" }}%</td>
+          <td>{{ "%.2f"|format(row.be_rate_pct) if row.be_rate_pct is not none else "N/A" }}%</td>
+          <td>{{ "%.2f"|format(row.return_method1_pct) if row.return_method1_pct is not none else "N/A" }}%</td>
+          <td>{{ "%.2f"|format(row.return_method2_pct) if row.return_method2_pct is not none else "N/A" }}%</td>
+          <td>{{ "%.2f"|format(row.mdd_pct) }}%</td>
+          <td>{{ "%.2f"|format(row.realized_pnl) }}</td>
+          <td>{{ "%.2f"|format(row.deposit_sum) }}</td>
+          <td>{{ "%.2f"|format(row.withdraw_sum) }}</td>
+          <td>{{ "%.2f"|format(row.asset_start) }}</td>
+          <td>{{ "%.2f"|format(row.asset_end) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="card">
+  <h3>Yearly History</h3>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Period</th>
+          <th>Trades</th>
+          <th>Sells</th>
+          <th>Win Rate</th>
+          <th>BE Rate</th>
+          <th>Return M1</th>
+          <th>Return M2</th>
+          <th>MDD</th>
+          <th>Realized PnL</th>
+          <th>Deposit</th>
+          <th>Withdraw</th>
+          <th>Asset Start</th>
+          <th>Asset End</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in data.yearly %}
+        <tr>
+          <td>{{ row.period_key }}</td>
+          <td>{{ row.trade_count }}</td>
+          <td>{{ row.sell_count }}</td>
+          <td>{{ "%.2f"|format(row.win_rate_pct) if row.win_rate_pct is not none else "N/A" }}%</td>
+          <td>{{ "%.2f"|format(row.be_rate_pct) if row.be_rate_pct is not none else "N/A" }}%</td>
+          <td>{{ "%.2f"|format(row.return_method1_pct) if row.return_method1_pct is not none else "N/A" }}%</td>
+          <td>{{ "%.2f"|format(row.return_method2_pct) if row.return_method2_pct is not none else "N/A" }}%</td>
+          <td>{{ "%.2f"|format(row.mdd_pct) }}%</td>
+          <td>{{ "%.2f"|format(row.realized_pnl) }}</td>
+          <td>{{ "%.2f"|format(row.deposit_sum) }}</td>
+          <td>{{ "%.2f"|format(row.withdraw_sum) }}</td>
+          <td>{{ "%.2f"|format(row.asset_start) }}</td>
+          <td>{{ "%.2f"|format(row.asset_end) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<script>
+  const chartPayload = {
+    daily: {{ data.daily | tojson }},
+    weekly: {{ data.weekly | tojson }},
+    monthly: {{ data.monthly | tojson }},
+    yearly: {{ data.yearly | tojson }},
+  };
+
+  function safeNum(v) {
+    return typeof v === "number" && Number.isFinite(v) ? v : null;
+  }
+
+  function parseDateStart(s) {
+    return s ? new Date(`${s}T00:00:00`) : null;
+  }
+
+  function parseDateEnd(s) {
+    return s ? new Date(`${s}T23:59:59`) : null;
+  }
+
+  function collectDateBounds(payload) {
+    const starts = [];
+    const ends = [];
+    const groups = [payload.daily, payload.weekly, payload.monthly, payload.yearly];
+    for (const rows of groups) {
+      for (const row of rows) {
+        if (row.period_start) starts.push(row.period_start);
+        if (row.period_end) ends.push(row.period_end);
+      }
+    }
+    if (!starts.length || !ends.length) {
+      return { minDate: null, maxDate: null };
+    }
+    starts.sort();
+    ends.sort();
+    return { minDate: starts[0], maxDate: ends[ends.length - 1] };
+  }
+
+  function filterRowsByRange(rows, startDateStr, endDateStr) {
+    const start = parseDateStart(startDateStr);
+    const end = parseDateEnd(endDateStr);
+    return rows.filter((row) => {
+      const rowStart = parseDateStart(row.period_start);
+      const rowEnd = parseDateEnd(row.period_end);
+      if (start && rowEnd && rowEnd < start) return false;
+      if (end && rowStart && rowStart > end) return false;
+      return true;
+    });
+  }
+
+  function escapeXml(text) {
+    return String(text)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&apos;");
+  }
+
+  function collectSeriesPoints(rows, key, x, y, seriesLabel) {
+    const points = [];
+    for (let i = 0; i < rows.length; i++) {
+      const v = safeNum(rows[i][key]);
+      if (v === null) continue;
+      points.push({
+        x: x(i),
+        y: y(v),
+        value: v,
+        periodKey: rows[i].period_key,
+        seriesLabel,
+      });
+    }
+    return points;
+  }
+
+  function drawSeriesSvg(points, color, width, dash = "", radius = 2.4) {
+    if (!points.length) return "";
+    const polylinePoints = points.map((p) => `${p.x},${p.y}`).join(" ");
+    let out = "";
+    if (points.length >= 2) {
+      const dashAttr = dash ? ` stroke-dasharray="${dash}"` : "";
+      out += `<polyline points="${polylinePoints}" fill="none" stroke="${color}" stroke-width="${width}"${dashAttr} />`;
+    }
+    for (const p of points) {
+      const tooltip = `${p.periodKey} | ${p.seriesLabel}: ${p.value.toFixed(2)}%`;
+      out += `<circle cx="${p.x}" cy="${p.y}" r="${radius}" fill="${color}"></circle>`;
+      out += `<circle class="chart-hover-node" cx="${p.x}" cy="${p.y}" r="${Math.max(7, radius + 3)}" fill="transparent" data-tip="${escapeXml(tooltip)}"><title>${escapeXml(tooltip)}</title></circle>`;
+    }
+    return out;
+  }
+
+  function attachBenchmark(rows, benchmarkRows) {
+    const bmMap = new Map((benchmarkRows || []).map((row) => [
+      row.period_key,
+      {
+        period: safeNum(row.return_pct),
+        cumulative: safeNum(row.cumulative_return_pct),
+      },
+    ]));
+    return rows.map((row) => ({
+      ...row,
+      benchmark_return_pct: bmMap.has(row.period_key) ? bmMap.get(row.period_key).period : null,
+      benchmark_cumulative_return_pct: bmMap.has(row.period_key) ? bmMap.get(row.period_key).cumulative : null,
+    }));
+  }
+
+  function modeLabel(mode) {
+    return mode === "cumulative" ? "Cumulative" : "Period";
+  }
+
+  function buildRowsByMode(rows, mode) {
+    if (mode !== "cumulative") {
+      return rows.map((row) => ({
+        ...row,
+        benchmark_plot_return_pct: safeNum(row.benchmark_return_pct),
+      }));
+    }
+
+    const factors = { return_method1_pct: 1, return_method2_pct: 1 };
+    return rows.map((row) => {
+      const nextRow = { ...row };
+      for (const key of Object.keys(factors)) {
+        const v = safeNum(row[key]);
+        if (v === null) {
+          nextRow[key] = null;
+          continue;
+        }
+        factors[key] *= (1 + (v / 100));
+        nextRow[key] = (factors[key] - 1) * 100;
+      }
+      nextRow.benchmark_plot_return_pct = safeNum(row.benchmark_cumulative_return_pct);
+      return nextRow;
+    });
+  }
+
+  function percentile(sortedVals, p) {
+    if (!sortedVals.length) return null;
+    const idx = (sortedVals.length - 1) * p;
+    const lo = Math.floor(idx);
+    const hi = Math.ceil(idx);
+    if (lo === hi) return sortedVals[lo];
+    const w = idx - lo;
+    return sortedVals[lo] * (1 - w) + sortedVals[hi] * w;
+  }
+
+  function renderDistributionChart(rowsByGranularity, mode) {
+    const holder = document.getElementById("chart-distribution");
+    const summary = document.getElementById("dist-summary");
+    const granularityEl = document.getElementById("dist-granularity");
+    const methodEl = document.getElementById("dist-method");
+    if (!holder || !summary || !granularityEl || !methodEl) return;
+
+    const granularity = granularityEl.value;
+    const methodKey = methodEl.value;
+    const metricLabel = methodKey === "return_method2_pct" ? "Method 2" : "Method 1";
+    const sourceRows = rowsByGranularity[granularity] || [];
+    const ordered = [...sourceRows].reverse();
+    const chartRows = buildRowsByMode(ordered, mode);
+
+    const values = [];
+    for (const row of chartRows) {
+      const v = safeNum(row[methodKey]);
+      if (v !== null) values.push(v);
+    }
+
+    if (!values.length) {
+      summary.textContent = "No valid return values in current filter range.";
+      holder.innerHTML = '<div class="small">No data</div>';
+      return;
+    }
+
+    const sorted = [...values].sort((a, b) => a - b);
+    const n = sorted.length;
+    const minV = sorted[0];
+    const maxV = sorted[n - 1];
+    const q1 = percentile(sorted, 0.25);
+    const q3 = percentile(sorted, 0.75);
+    const iqr = (q3 !== null && q1 !== null) ? (q3 - q1) : 0;
+    const fdWidth = iqr > 0 ? (2 * iqr * Math.pow(n, -1 / 3)) : 0;
+    const fallbackBins = Math.max(6, Math.min(14, Math.round(Math.sqrt(n))));
+    let binCount = fallbackBins;
+    if (fdWidth > 0 && maxV > minV) {
+      binCount = Math.max(6, Math.min(20, Math.ceil((maxV - minV) / fdWidth)));
+    }
+    if (maxV === minV) {
+      binCount = 1;
+    }
+
+    const width = 920;
+    const height = 300;
+    const margin = { top: 24, right: 18, bottom: 52, left: 52 };
+    const plotW = width - margin.left - margin.right;
+    const plotH = height - margin.top - margin.bottom;
+
+    const bins = Array.from({ length: binCount }, (_, i) => ({
+      idx: i,
+      low: minV + ((maxV - minV) * i) / binCount,
+      high: minV + ((maxV - minV) * (i + 1)) / binCount,
+      count: 0,
+    }));
+
+    if (binCount === 1) {
+      bins[0].count = n;
+      bins[0].low = minV - 0.5;
+      bins[0].high = maxV + 0.5;
+    } else {
+      for (const v of sorted) {
+        let idx = Math.floor(((v - minV) / (maxV - minV)) * binCount);
+        if (idx < 0) idx = 0;
+        if (idx >= binCount) idx = binCount - 1;
+        bins[idx].count += 1;
+      }
+    }
+
+    const maxCount = Math.max(...bins.map((b) => b.count), 1);
+    const barGap = 4;
+    const barW = Math.max(3, (plotW / binCount) - barGap);
+    const x = (i) => margin.left + i * (plotW / binCount) + (barGap / 2);
+    const y = (count) => margin.top + ((maxCount - count) / maxCount) * plotH;
+
+    let svg = '';
+    svg += `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Return distribution histogram">`;
+    svg += `<rect x="0" y="0" width="${width}" height="${height}" fill="#fffdfa" />`;
+    for (let i = 0; i <= 4; i++) {
+      const c = Math.round((maxCount * i) / 4);
+      const py = y(c);
+      svg += `<line x1="${margin.left}" y1="${py}" x2="${margin.left + plotW}" y2="${py}" stroke="#ddd3c4" stroke-width="1" />`;
+      svg += `<text x="${margin.left - 8}" y="${py + 4}" text-anchor="end" font-size="11" fill="#6f6658">${c}</text>`;
+    }
+    svg += `<line x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${margin.top + plotH}" stroke="#b8ac99" stroke-width="1.2" />`;
+    svg += `<line x1="${margin.left}" y1="${margin.top + plotH}" x2="${margin.left + plotW}" y2="${margin.top + plotH}" stroke="#b8ac99" stroke-width="1.2" />`;
+
+    bins.forEach((b, i) => {
+      const px = x(i);
+      const py = y(b.count);
+      const h = margin.top + plotH - py;
+      const rate = ((b.count / n) * 100).toFixed(1);
+      const tip = `${b.low.toFixed(2)}% ~ ${b.high.toFixed(2)}% | ${b.count} (${rate}%)`;
+      svg += `<rect class="chart-hover-node" x="${px}" y="${py}" width="${barW}" height="${h}" fill="#215561" data-tip="${escapeXml(tip)}"><title>${escapeXml(tip)}</title></rect>`;
+    });
+
+    const tickIndices = [0, Math.floor((binCount - 1) / 2), binCount - 1];
+    const seenTicks = new Set();
+    for (const idx of tickIndices) {
+      if (idx < 0 || idx >= binCount || seenTicks.has(idx)) continue;
+      seenTicks.add(idx);
+      const b = bins[idx];
+      const px = x(idx) + (barW / 2);
+      svg += `<line x1="${px}" y1="${margin.top + plotH}" x2="${px}" y2="${margin.top + plotH + 5}" stroke="#8e816c" stroke-width="1" />`;
+      svg += `<text x="${px}" y="${margin.top + plotH + 18}" text-anchor="middle" font-size="10" fill="#6f6658">${b.low.toFixed(1)}%</text>`;
+    }
+    svg += `<text x="${margin.left}" y="14" font-size="12" fill="#1d1a16">${modeLabel(mode)} ${granularity} ${metricLabel} Distribution</text>`;
+    svg += '</svg>';
+    holder.innerHTML = svg;
+    attachHoverTooltip(holder);
+
+    const mean = values.reduce((acc, v) => acc + v, 0) / n;
+    const median = percentile(sorted, 0.5);
+    summary.textContent = `N=${n} | Mean=${mean.toFixed(2)}% | Median=${(median ?? 0).toFixed(2)}% | Min=${minV.toFixed(2)}% | Max=${maxV.toFixed(2)}%`;
+  }
+
+  function attachHoverTooltip(holder) {
+    if (!holder) return;
+    holder.classList.add("has-hover-tip");
+    let tip = holder.querySelector(".chart-hover-tip");
+    if (!tip) {
+      tip = document.createElement("div");
+      tip.className = "chart-hover-tip";
+      tip.hidden = true;
+      holder.appendChild(tip);
+    }
+
+    if (holder.dataset.tooltipBound === "1") return;
+    holder.dataset.tooltipBound = "1";
+
+    function hideTip() {
+      const currentTip = holder.querySelector(".chart-hover-tip");
+      if (currentTip) currentTip.hidden = true;
+    }
+
+    function moveTip(evt) {
+      const currentTip = holder.querySelector(".chart-hover-tip");
+      if (!currentTip) return;
+      const target = evt.target && evt.target.closest ? evt.target.closest(".chart-hover-node") : null;
+      if (!target || !holder.contains(target)) {
+        hideTip();
+        return;
+      }
+      const text = target.getAttribute("data-tip");
+      if (!text) {
+        hideTip();
+        return;
+      }
+      currentTip.textContent = text;
+      currentTip.hidden = false;
+
+      const holderRect = holder.getBoundingClientRect();
+      const localX = evt.clientX - holderRect.left;
+      const localY = evt.clientY - holderRect.top;
+      const offset = 12;
+      const tipW = currentTip.offsetWidth || 0;
+      const tipH = currentTip.offsetHeight || 0;
+
+      let left = localX + offset;
+      let top = localY - (tipH + offset);
+      if (left + tipW + 6 > holder.clientWidth) left = Math.max(6, localX - tipW - offset);
+      if (top < 6) top = localY + offset;
+      if (top + tipH > holder.clientHeight - 6) top = holder.clientHeight - tipH - 6;
+
+      currentTip.style.left = `${Math.max(6, left)}px`;
+      currentTip.style.top = `${Math.max(6, top)}px`;
+    }
+
+    holder.addEventListener("mousemove", moveTip);
+    holder.addEventListener("mouseleave", hideTip);
+    holder.addEventListener("scroll", hideTip);
+  }
+
+  function renderReturnChart(targetId, rows, title, benchmarkSymbol, mode) {
+    const holder = document.getElementById(targetId);
+    if (!holder) return;
+
+    const ordered = [...rows].reverse();
+    const chartRows = buildRowsByMode(ordered, mode);
+    if (!ordered.length) {
+      holder.innerHTML = '<div class="small">No data</div>';
+      return;
+    }
+
+    const width = 920;
+    const height = 320;
+    const margin = { top: 20, right: 24, bottom: 56, left: 58 };
+    const plotW = width - margin.left - margin.right;
+    const plotH = height - margin.top - margin.bottom;
+
+    const allValues = [];
+    for (const row of chartRows) {
+      const m1 = safeNum(row.return_method1_pct);
+      const m2 = safeNum(row.return_method2_pct);
+      const bm = safeNum(row.benchmark_plot_return_pct);
+      if (m1 !== null) allValues.push(m1);
+      if (m2 !== null) allValues.push(m2);
+      if (bm !== null) allValues.push(bm);
+    }
+    if (!allValues.length) {
+      holder.innerHTML = '<div class="small">No valid return data</div>';
+      return;
+    }
+
+    let minV = Math.min(...allValues, 0);
+    let maxV = Math.max(...allValues, 0);
+    if (Math.abs(maxV - minV) < 1e-9) {
+      maxV += 1;
+      minV -= 1;
+    }
+
+    const x = (i) => {
+      if (ordered.length === 1) return margin.left + plotW / 2;
+      return margin.left + (i / (ordered.length - 1)) * plotW;
+    };
+    const y = (v) => margin.top + ((maxV - v) / (maxV - minV)) * plotH;
+
+    let svg = '';
+    svg += `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${title}">`;
+    svg += `<rect x="0" y="0" width="${width}" height="${height}" fill="#fffdfa" />`;
+
+    for (let i = 0; i <= 4; i++) {
+      const value = minV + ((maxV - minV) * i) / 4;
+      const py = y(value);
+      svg += `<line x1="${margin.left}" y1="${py}" x2="${margin.left + plotW}" y2="${py}" stroke="#ddd3c4" stroke-width="1" />`;
+      svg += `<text x="${margin.left - 8}" y="${py + 4}" text-anchor="end" font-size="11" fill="#6f6658">${value.toFixed(2)}%</text>`;
+    }
+
+    svg += `<line x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${margin.top + plotH}" stroke="#b8ac99" stroke-width="1.2" />`;
+    svg += `<line x1="${margin.left}" y1="${margin.top + plotH}" x2="${margin.left + plotW}" y2="${margin.top + plotH}" stroke="#b8ac99" stroke-width="1.2" />`;
+
+    const m1Label = mode === "cumulative" ? "단순 누적 수익률" : "단순 수익률";
+    const m2Label = mode === "cumulative" ? "시간가중 누적 수익률" : "시간가중 수익률";
+    const bmLabel = mode === "cumulative"
+      ? `${benchmarkSymbol || "Benchmark"} 누적 수익률`
+      : (benchmarkSymbol || "Benchmark");
+    const m1LegendLabel = mode === "cumulative" ? "단순 누적" : "단순 수익률";
+    const m2LegendLabel = mode === "cumulative" ? "시간가중 누적" : "시간가중 수익률";
+    const bmLegendLabel = mode === "cumulative"
+      ? `${benchmarkSymbol || "Benchmark"} cum`
+      : (benchmarkSymbol || "Benchmark");
+    const m1Points = collectSeriesPoints(chartRows, "return_method1_pct", x, y, m1Label);
+    const m2Points = collectSeriesPoints(chartRows, "return_method2_pct", x, y, m2Label);
+    const bmPoints = collectSeriesPoints(chartRows, "benchmark_plot_return_pct", x, y, bmLabel);
+
+    // Draw M2 first so M1 stays visible even when the two lines overlap exactly.
+    svg += drawSeriesSvg(m2Points, "#215561", 2.0, "6 4");
+    svg += drawSeriesSvg(m1Points, "#b34a2f", 2.4);
+    svg += drawSeriesSvg(bmPoints, "#4e7a1e", 2.2);
+
+    const tickStep = Math.max(1, Math.ceil(ordered.length / 8));
+    for (let i = 0; i < ordered.length; i += tickStep) {
+      const px = x(i);
+      svg += `<line x1="${px}" y1="${margin.top + plotH}" x2="${px}" y2="${margin.top + plotH + 5}" stroke="#8e816c" stroke-width="1" />`;
+      svg += `<text x="${px}" y="${margin.top + plotH + 18}" text-anchor="middle" font-size="10" fill="#6f6658">${ordered[i].period_key}</text>`;
+    }
+    if ((ordered.length - 1) % tickStep !== 0) {
+      const last = ordered.length - 1;
+      const px = x(last);
+      svg += `<line x1="${px}" y1="${margin.top + plotH}" x2="${px}" y2="${margin.top + plotH + 5}" stroke="#8e816c" stroke-width="1" />`;
+      svg += `<text x="${px}" y="${margin.top + plotH + 18}" text-anchor="middle" font-size="10" fill="#6f6658">${ordered[last].period_key}</text>`;
+    }
+
+    const titlePrefix = mode === "cumulative" ? "Cumulative " : "";
+    svg += `<text x="${margin.left}" y="14" font-size="12" fill="#1d1a16">${titlePrefix}${title}</text>`;
+    svg += `<circle cx="${width - 230}" cy="14" r="4" fill="#b34a2f" />`;
+    svg += `<text x="${width - 220}" y="18" font-size="11" fill="#1d1a16">${m1LegendLabel}</text>`;
+    svg += `<circle cx="${width - 140}" cy="14" r="4" fill="#215561" />`;
+    svg += `<text x="${width - 130}" y="18" font-size="11" fill="#1d1a16">${m2LegendLabel}</text>`;
+    svg += `<circle cx="${width - 64}" cy="14" r="4" fill="#4e7a1e" />`;
+    svg += `<text x="${width - 54}" y="18" font-size="11" fill="#1d1a16">${bmLegendLabel}</text>`;
+
+    svg += '</svg>';
+    holder.innerHTML = svg;
+    attachHoverTooltip(holder);
+  }
+
+  const startInput = document.getElementById("chart-start-date");
+  const endInput = document.getElementById("chart-end-date");
+  const benchmarkSelect = document.getElementById("benchmark-symbol");
+  const rangeForm = document.getElementById("chart-range-form");
+  const resetButton = document.getElementById("chart-reset-btn");
+  const rangeError = document.getElementById("chart-range-error");
+  const rangeMeta = document.getElementById("chart-range-meta");
+  const fxCurrencySelect = document.getElementById("fx-currency");
+  const fxDaysSelect = document.getElementById("fx-days");
+  const fxLoadButton = document.getElementById("fx-load-btn");
+  const fxChartMeta = document.getElementById("fx-chart-meta");
+  const fxChartHolder = document.getElementById("fx-chart");
+  const distGranularity = document.getElementById("dist-granularity");
+  const distMethod = document.getElementById("dist-method");
+  const modeButtons = Array.from(document.querySelectorAll(".chart-mode-btn"));
+  let chartMode = "period";
+  let benchmarkPayload = { symbol: null, daily: [], weekly: [], monthly: [], yearly: [] };
+
+  function renderFxChart(payload) {
+    if (!fxChartHolder) return;
+    const rows = payload?.rows || [];
+    if (!rows.length) {
+      fxChartHolder.innerHTML = '<div class="small">No FX data</div>';
+      if (fxChartMeta) fxChartMeta.textContent = "";
+      return;
+    }
+
+    const width = 920;
+    const height = 300;
+    const margin = { top: 20, right: 20, bottom: 50, left: 70 };
+    const plotW = width - margin.left - margin.right;
+    const plotH = height - margin.top - margin.bottom;
+
+    const values = rows.map((r) => Number(r.rate)).filter((v) => Number.isFinite(v));
+    if (!values.length) {
+      fxChartHolder.innerHTML = '<div class="small">No valid FX values</div>';
+      return;
+    }
+    let minV = Math.min(...values);
+    let maxV = Math.max(...values);
+    if (Math.abs(maxV - minV) < 1e-9) {
+      maxV += 1;
+      minV -= 1;
+    }
+
+    const x = (i) => (rows.length === 1 ? margin.left + (plotW / 2) : margin.left + (i / (rows.length - 1)) * plotW);
+    const y = (v) => margin.top + ((maxV - v) / (maxV - minV)) * plotH;
+
+    let svg = '';
+    svg += `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="FX chart">`;
+    svg += `<rect x="0" y="0" width="${width}" height="${height}" fill="#fffdfa" />`;
+    for (let i = 0; i <= 4; i++) {
+      const value = minV + ((maxV - minV) * i) / 4;
+      const py = y(value);
+      svg += `<line x1="${margin.left}" y1="${py}" x2="${margin.left + plotW}" y2="${py}" stroke="#ddd3c4" stroke-width="1" />`;
+      svg += `<text x="${margin.left - 8}" y="${py + 4}" text-anchor="end" font-size="11" fill="#6f6658">${value.toFixed(4)}</text>`;
+    }
+    svg += `<line x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${margin.top + plotH}" stroke="#b8ac99" stroke-width="1.2" />`;
+    svg += `<line x1="${margin.left}" y1="${margin.top + plotH}" x2="${margin.left + plotW}" y2="${margin.top + plotH}" stroke="#b8ac99" stroke-width="1.2" />`;
+
+    const points = rows.map((r, i) => `${x(i)},${y(Number(r.rate))}`).join(" ");
+    svg += `<polyline points="${points}" fill="none" stroke="#24546a" stroke-width="2.2" />`;
+    rows.forEach((row, i) => {
+      const px = x(i);
+      const py = y(Number(row.rate));
+      const tip = `${row.date} | ${payload.currency}/${payload.base_currency}: ${Number(row.rate).toFixed(4)}`;
+      svg += `<circle cx="${px}" cy="${py}" r="2.4" fill="#24546a" />`;
+      svg += `<circle class="chart-hover-node" cx="${px}" cy="${py}" r="8" fill="transparent" data-tip="${escapeXml(tip)}"><title>${escapeXml(tip)}</title></circle>`;
+    });
+    svg += `<text x="${margin.left}" y="14" font-size="12" fill="#1d1a16">FX ${payload.currency}/${payload.base_currency}</text>`;
+    svg += `</svg>`;
+
+    fxChartHolder.innerHTML = svg;
+    attachHoverTooltip(fxChartHolder);
+    if (fxChartMeta) {
+      fxChartMeta.textContent = `${payload.start_date} ~ ${payload.end_date} | points: ${rows.length}`;
+    }
+  }
+
+  async function loadFxHistoryAndRender() {
+    if (!fxCurrencySelect || !fxDaysSelect) return;
+    const currency = fxCurrencySelect.value;
+    const days = Number(fxDaysSelect.value || "90");
+    try {
+      const res = await fetch(`/api/fx/history?currency=${encodeURIComponent(currency)}&days=${encodeURIComponent(days)}`);
+      if (!res.ok) {
+        let msg = `${res.status}`;
+        try {
+          const body = await res.json();
+          msg = body.detail || msg;
+        } catch (_) {}
+        throw new Error(msg);
+      }
+      const payload = await res.json();
+      renderFxChart(payload);
+    } catch (err) {
+      if (fxChartHolder) fxChartHolder.innerHTML = `<div class="small">FX load failed: ${err.message}</div>`;
+      if (fxChartMeta) fxChartMeta.textContent = "";
+    }
+  }
+
+  function updateModeButtons() {
+    for (const btn of modeButtons) {
+      const isActive = btn.dataset.mode === chartMode;
+      btn.classList.toggle("is-active", isActive);
+      btn.setAttribute("aria-pressed", isActive ? "true" : "false");
+    }
+  }
+
+  async function loadBenchmark(symbol) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 10000);
+    let res;
+    try {
+      res = await fetch(`/api/benchmark/returns?symbol=${encodeURIComponent(symbol)}`, {
+        signal: controller.signal,
+      });
+    } catch (err) {
+      if (err && err.name === "AbortError") {
+        throw new Error("request timeout");
+      }
+      throw err;
+    } finally {
+      clearTimeout(timer);
+    }
+
+    if (!res.ok) {
+      let msg = `${res.status}`;
+      try {
+        const body = await res.json();
+        msg = body.detail || msg;
+      } catch (_) {}
+      throw new Error(msg);
+    }
+    benchmarkPayload = await res.json();
+  }
+
+  function renderFilteredCharts() {
+    const startVal = startInput.value;
+    const endVal = endInput.value;
+    const daily = filterRowsByRange(chartPayload.daily, startVal, endVal);
+    const weekly = filterRowsByRange(chartPayload.weekly, startVal, endVal);
+    const monthly = filterRowsByRange(chartPayload.monthly, startVal, endVal);
+    const yearly = filterRowsByRange(chartPayload.yearly, startVal, endVal);
+    const bmDaily = filterRowsByRange(benchmarkPayload.daily || [], startVal, endVal);
+    const bmWeekly = filterRowsByRange(benchmarkPayload.weekly || [], startVal, endVal);
+    const bmMonthly = filterRowsByRange(benchmarkPayload.monthly || [], startVal, endVal);
+    const bmYearly = filterRowsByRange(benchmarkPayload.yearly || [], startVal, endVal);
+
+    const dailyMerged = attachBenchmark(daily, bmDaily);
+    const weeklyMerged = attachBenchmark(weekly, bmWeekly);
+    const monthlyMerged = attachBenchmark(monthly, bmMonthly);
+    const yearlyMerged = attachBenchmark(yearly, bmYearly);
+
+    renderReturnChart("chart-daily", dailyMerged, "Daily Return %", benchmarkPayload.symbol, chartMode);
+    renderReturnChart("chart-weekly", weeklyMerged, "Weekly Return %", benchmarkPayload.symbol, chartMode);
+    renderReturnChart("chart-monthly", monthlyMerged, "Monthly Return %", benchmarkPayload.symbol, chartMode);
+    renderReturnChart("chart-yearly", yearlyMerged, "Yearly Return %", benchmarkPayload.symbol, chartMode);
+    renderDistributionChart(
+      {
+        daily: dailyMerged,
+        weekly: weeklyMerged,
+        monthly: monthlyMerged,
+        yearly: yearlyMerged,
+      },
+      chartMode,
+    );
+
+    rangeMeta.textContent = `Mode: ${modeLabel(chartMode)} | Benchmark: ${benchmarkPayload.symbol || "N/A"} | Daily: ${daily.length} / Weekly: ${weekly.length} / Monthly: ${monthly.length} / Yearly: ${yearly.length}`;
+  }
+
+  async function loadBenchmarkAndRender() {
+    rangeError.textContent = "";
+    renderFilteredCharts();
+    try {
+      const selected = benchmarkSelect.value;
+      await loadBenchmark(selected);
+    } catch (err) {
+      benchmarkPayload = { symbol: benchmarkSelect.value, daily: [], weekly: [], monthly: [], yearly: [] };
+      rangeError.textContent = `Benchmark load failed: ${err.message}`;
+    }
+    renderFilteredCharts();
+  }
+
+  rangeForm.addEventListener("submit", (e) => {
+    e.preventDefault();
+    rangeError.textContent = "";
+
+    const startVal = startInput.value;
+    const endVal = endInput.value;
+    if (startVal && endVal && startVal > endVal) {
+      rangeError.textContent = "Start Date must be earlier than or equal to End Date.";
+      return;
+    }
+    renderFilteredCharts();
+  });
+
+  resetButton.addEventListener("click", () => {
+    const bounds = collectDateBounds(chartPayload);
+    startInput.value = bounds.minDate || "";
+    endInput.value = bounds.maxDate || "";
+    rangeError.textContent = "";
+    renderFilteredCharts();
+  });
+
+  benchmarkSelect.addEventListener("change", async () => {
+    await loadBenchmarkAndRender();
+  });
+
+  modeButtons.forEach((btn) => {
+    btn.addEventListener("click", () => {
+      chartMode = btn.dataset.mode === "cumulative" ? "cumulative" : "period";
+      updateModeButtons();
+      renderFilteredCharts();
+    });
+  });
+  distGranularity?.addEventListener("change", () => renderFilteredCharts());
+  distMethod?.addEventListener("change", () => renderFilteredCharts());
+  fxLoadButton?.addEventListener("click", () => loadFxHistoryAndRender());
+  fxCurrencySelect?.addEventListener("change", () => loadFxHistoryAndRender());
+  fxDaysSelect?.addEventListener("change", () => loadFxHistoryAndRender());
+
+  const bounds = collectDateBounds(chartPayload);
+  startInput.value = bounds.minDate || "";
+  endInput.value = bounds.maxDate || "";
+  updateModeButtons();
+  renderFilteredCharts();
+  loadFxHistoryAndRender();
+  loadBenchmarkAndRender();
+</script>
+{% endblock %}

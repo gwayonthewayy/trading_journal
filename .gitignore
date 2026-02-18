@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+.venv/
+data/*.sqlite
+data/backups/*.sqlite
+.env.runtime
+.access_info

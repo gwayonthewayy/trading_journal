@@ -1,0 +1,1247 @@
+﻿{% extends "base.html" %}
+{% block page_header %}
+<section class="page-head">
+  <h1>Trading Journal</h1>
+  <p>매매 기록, 실행 이벤트, 리뷰를 한 화면에서 관리합니다.</p>
+  <div class="pill-row">
+    <span class="pill">Events {{ data.events|length }}</span>
+    <span class="pill">Book Asset {{ "%.2f"|format(data.book_asset) }} {{ data.base_currency }}</span>
+    <span class="pill">Cash {{ "%.2f"|format(data.cash_balance) }} {{ data.base_currency }}</span>
+  </div>
+</section>
+{% endblock %}
+
+{% block content %}
+<section class="metrics">
+  <div class="metric">
+    <div class="label">Book Asset ({{ data.base_currency }})</div>
+    <div class="value">{{ "%.2f"|format(data.book_asset) }}</div>
+    <div class="hint">현재 기준 총 장부자산</div>
+  </div>
+  <div class="metric">
+    <div class="label">Cash Balance ({{ data.base_currency }})</div>
+    <div class="value">{{ "%.2f"|format(data.cash_balance) }}</div>
+    <div class="hint">입출금과 체결 반영 현금</div>
+  </div>
+  <div class="metric">
+    <div class="label">Event Count</div>
+    <div class="value">{{ data.events|length }}</div>
+    <div class="hint">최근 300개 이벤트</div>
+  </div>
+</section>
+
+{% if can_write %}
+  <div class="grid">
+    <section class="card">
+      <div class="card-head">
+        <h3>BUY</h3>
+        <p>신규 진입 기록</p>
+      </div>
+      <form id="buy-form">
+        <div class="form-row">
+          <input name="ticker" placeholder="Ticker" required />
+          <select name="market">
+            <option value="">Market</option>
+            <option value="KR">KR</option>
+            <option value="US">US</option>
+            <option value="HK">HK</option>
+          </select>
+          <select name="currency">
+            <option value="">Currency</option>
+            <option value="KRW">KRW</option>
+            <option value="USD">USD</option>
+            <option value="HKD">HKD</option>
+          </select>
+        </div>
+        <div class="form-row">
+          <input name="qty" type="number" step="any" placeholder="Qty" required />
+          <input name="price" type="number" step="any" placeholder="Price" required />
+          <input name="fee" type="number" step="any" value="0" placeholder="Fee" />
+          <input name="fx_rate_to_base" type="number" step="any" placeholder="FX to Base" />
+        </div>
+        <div class="form-row">
+          <input name="sl" type="number" step="any" placeholder="SL" />
+          <input name="tp" type="number" step="any" placeholder="TP" />
+          <input name="trade_group_title" placeholder="Trade Group Title" />
+        </div>
+        <input name="ts" type="datetime-local" step="1" placeholder="TS (optional)" />
+        <input name="buy_reason" placeholder="Reason" />
+        <input name="note" placeholder="Note" />
+        <button type="submit">Create BUY</button>
+        <div id="buy-error" class="error"></div>
+      </form>
+    </section>
+
+    <section class="card">
+      <div class="card-head">
+        <h3>CASHFLOW</h3>
+        <p>입출금 기록</p>
+      </div>
+      <form id="cashflow-form">
+        <div class="form-row">
+          <input name="cash_amount" type="number" step="any" placeholder="+10000 / -2000" required />
+          <select name="currency">
+            <option value="">Currency (optional)</option>
+            <option value="KRW">KRW</option>
+            <option value="USD">USD</option>
+            <option value="HKD">HKD</option>
+          </select>
+          <input name="fx_rate_to_base" type="number" step="any" placeholder="FX to Base" />
+        </div>
+        <input name="ts" type="datetime-local" step="1" placeholder="TS (optional)" />
+        <input name="note" placeholder="Note" />
+        <button type="submit" class="secondary">Add CASHFLOW</button>
+        <div id="cashflow-error" class="error"></div>
+      </form>
+    </section>
+  </div>
+
+  <div class="grid">
+    <section class="card">
+      <div class="card-head">
+        <h3>SELL</h3>
+        <p>청산과 lot 배분</p>
+      </div>
+      <form id="sell-form">
+        <div class="form-row">
+          <input id="sell-ticker" name="ticker" placeholder="Ticker" required />
+          <select name="market">
+            <option value="">Market (optional)</option>
+            <option value="KR">KR</option>
+            <option value="US">US</option>
+            <option value="HK">HK</option>
+          </select>
+          <select name="currency">
+            <option value="">Currency (optional)</option>
+            <option value="KRW">KRW</option>
+            <option value="USD">USD</option>
+            <option value="HKD">HKD</option>
+          </select>
+        </div>
+        <div class="form-row">
+          <input name="price" type="number" step="any" placeholder="Sell Price" required />
+          <input name="fee" type="number" step="any" value="0" placeholder="Fee" />
+          <input name="fx_rate_to_base" type="number" step="any" placeholder="FX to Base" />
+          <input name="trade_group_id" type="number" step="1" placeholder="Trade Group ID (opt)" />
+        </div>
+        <input name="ts" type="datetime-local" step="1" placeholder="TS (optional)" />
+        <input name="reason" placeholder="Reason" />
+        <input name="note" placeholder="Note" />
+
+        <div class="small">Allocations (lot 수량)</div>
+        <div id="allocations"></div>
+        <button id="add-allocation" type="button" class="secondary">Add Allocation</button>
+
+        <button type="submit">Create SELL</button>
+        <div id="sell-error" class="error"></div>
+      </form>
+    </section>
+
+    <section class="card">
+      <div class="card-head">
+        <h3>SL_UPDATE</h3>
+        <p>손절/목표 보호가 변경</p>
+      </div>
+      <form id="sl-form">
+        <select name="lot_id" required>
+          <option value="">Select Lot</option>
+          {% for row in portfolio.rows %}
+            {% for lot in row.lots %}
+              <option value="{{ lot.lot_id }}">{{ row.ticker }} lot#{{ lot.lot_id }} (open {{ "%.4f"|format(lot.qty_open) }}, SL {{ lot.sl if lot.sl is not none else "None" }})</option>
+            {% endfor %}
+          {% endfor %}
+        </select>
+        <div class="form-row">
+          <input name="new_sl" type="number" step="any" placeholder="new SL" />
+          <input name="new_tp" type="number" step="any" placeholder="new TP" />
+        </div>
+        <input name="ts" type="datetime-local" step="1" placeholder="TS (optional)" />
+        <input name="reason" placeholder="Reason" />
+        <input name="note" placeholder="Note" />
+        <button type="submit">Update SL/TP</button>
+        <div id="sl-error" class="error"></div>
+      </form>
+    </section>
+  </div>
+
+  <select id="lot-options-template" style="display:none">
+    {% for row in portfolio.rows %}
+      {% for lot in row.lots %}
+        <option value="{{ lot.lot_id }}" data-ticker="{{ row.ticker }}">{{ row.ticker }} lot#{{ lot.lot_id }} (open {{ "%.4f"|format(lot.qty_open) }})</option>
+      {% endfor %}
+    {% endfor %}
+  </select>
+{% else %}
+  <section class="card">
+    <div class="card-head">
+      <h3>Read-Only Mode</h3>
+      <p>공유 링크로 접속 중입니다.</p>
+    </div>
+    <p class="small">매수/매도/수정/삭제/리뷰 등 쓰기 기능은 관리자 모드에서만 가능합니다.</p>
+  </section>
+{% endif %}
+
+<section class="card">
+  <div class="card-head">
+    <div>
+      <h3>Event Journal</h3>
+      <p>기록 검색과 타입별 필터</p>
+    </div>
+  </div>
+
+  <div class="journal-tools">
+    <form id="journal-filter-form" method="get" action="/journal" class="form-row">
+    <input name="q" type="search" placeholder="Filter by ticker, reason, note, review..." value="{{ data.filters.q }}" />
+    <select name="event_type">
+      <option value="">All Types</option>
+      <option value="BUY" {% if data.filters.event_type == "BUY" %}selected{% endif %}>BUY</option>
+      <option value="SELL" {% if data.filters.event_type == "SELL" %}selected{% endif %}>SELL</option>
+      <option value="CASHFLOW" {% if data.filters.event_type == "CASHFLOW" %}selected{% endif %}>CASHFLOW</option>
+      <option value="SL_UPDATE" {% if data.filters.event_type == "SL_UPDATE" %}selected{% endif %}>SL_UPDATE</option>
+      <option value="REVIEW" {% if data.filters.event_type == "REVIEW" %}selected{% endif %}>REVIEW</option>
+    </select>
+    <label class="small">
+      From date:
+      <input name="date_from" type="date" value="{{ data.filters.date_from }}" />
+    </label>
+    <label class="small">
+      To date:
+      <input name="date_to" type="date" value="{{ data.filters.date_to }}" />
+    </label>
+    <button type="submit">Apply</button>
+    <button id="journal-reset-btn" type="button" class="secondary">Reset</button>
+    </form>
+  </div>
+  <div id="journal-filter-error" class="error"></div>
+  <div id="active-filter-badges" class="pill-row">
+    {% if data.filters.q or data.filters.event_type or data.filters.date_from or data.filters.date_to %}
+      <span class="pill">Active filters</span>
+      {% if data.filters.q %}
+      <span class="pill">Query: {{ data.filters.q }}</span>
+      {% endif %}
+      {% if data.filters.event_type %}
+      <span class="pill">Type: {{ data.filters.event_type }}</span>
+      {% endif %}
+      {% if data.filters.date_from %}
+      <span class="pill">From date: {{ data.filters.date_from }}</span>
+      {% endif %}
+      {% if data.filters.date_to %}
+      <span class="pill">To date: {{ data.filters.date_to }}</span>
+      {% endif %}
+    {% endif %}
+  </div>
+  <p id="journal-summary" class="small">Showing {{ data.events|length }} / {{ data.filtered_events }} filtered events ({{ data.total_all_events }} total)</p>
+  {% if can_write %}
+    <p class="small">Tip: 이벤트 행을 클릭하면 선택됩니다. 선택 후 갤러리/카메라 업로드를 누르세요.</p>
+    <div class="card quick-attach-panel">
+      <div class="card-head">
+        <h3>Quick Image Attach</h3>
+        <p>모바일 최적화 이미지 업로드</p>
+      </div>
+      <div class="form-row" style="align-items:end;">
+        <label>
+          Selected Event
+          <select id="quick-attach-event-select">
+            <option value="">Select event...</option>
+            {% for e in data.events %}
+            <option value="{{ e.id }}">#{{ e.id }} | {{ e.type }} | {{ e.ticker or "-" }} | {{ e.ts }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>
+          Event ID (optional direct input)
+          <input id="quick-attach-event-id" type="number" min="1" placeholder="Event ID" />
+        </label>
+        <button id="quick-attach-latest-btn" type="button" class="secondary">Use Latest Event</button>
+        <button id="quick-attach-gallery-btn" type="button">Gallery Upload</button>
+        <button id="quick-attach-camera-btn" type="button">Camera Upload</button>
+      </div>
+      <div id="quick-attach-status" class="small"></div>
+    </div>
+  {% endif %}
+  <div id="journal-page-info" class="small">
+    Page {{ data.page }} / {{ data.total_pages }} | Page Size {{ data.page_size }}
+  </div>
+  <div id="journal-pagination" class="journal-pagination">
+    {% if data.has_prev and data.prev_page is not none %}
+      <button type="button" class="page-nav-btn" data-page="{{ data.prev_page }}">Prev</button>
+    {% else %}
+      <button type="button" class="page-nav-btn page-nav-disabled" disabled>Prev</button>
+    {% endif %}
+    <div id="journal-pagination-pages" class="journal-pagination-pages">
+      {% for item in data.page_urls %}
+        {% if item.page == data.page %}
+          <button type="button" class="page-num page-num-current" data-page="{{ item.page }}" disabled>{{ item.page }}</button>
+        {% else %}
+          <button type="button" class="page-num" data-page="{{ item.page }}">{{ item.page }}</button>
+        {% endif %}
+      {% endfor %}
+    </div>
+    {% if data.has_next and data.next_page is not none %}
+      <button type="button" class="page-nav-btn" data-page="{{ data.next_page }}">Next</button>
+    {% else %}
+      <button type="button" class="page-nav-btn page-nav-disabled" disabled>Next</button>
+    {% endif %}
+  </div>
+
+  <div class="table-wrap">
+    <table id="journal-table">
+      <thead>
+        <tr>
+          <th>TS</th>
+          <th>Ticker</th>
+          <th>Market</th>
+          <th>Currency</th>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Qty</th>
+          <th>Price</th>
+          <th>SL/TP</th>
+          <th>Amount</th>
+          <th>Unrealized PnL</th>
+          <th>Realized PnL</th>
+          <th>Realized PnL (Local)</th>
+          <th>Open Risk</th>
+          <th>Book Asset</th>
+          <th class="col-reason-note">Reason / Note</th>
+          <th>Review</th>
+          <th>Image</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="journal-tbody">
+      {% for e in data.events %}
+        <tr
+          class="journal-row"
+          data-type="{{ e.type }}"
+          data-event-id="{{ e.id }}"
+          data-event-type="{{ e.type }}"
+          data-event-ticker="{{ e.ticker or '' }}"
+          data-event-market="{{ e.market or '' }}"
+          data-event-currency="{{ e.currency or '' }}"
+          data-event-fx-rate="{{ e.fx_rate_to_base if e.fx_rate_to_base is not none else '' }}"
+          data-event-ts="{{ e.ts.isoformat() if e.ts else '' }}"
+          data-event-qty="{{ e.qty if e.qty is not none else '' }}"
+          data-event-price="{{ e.price if e.price is not none else '' }}"
+          data-event-fee="{{ e.fee if e.fee is not none else '' }}"
+          data-event-sl="{{ e.sl if e.sl is not none else '' }}"
+          data-event-tp="{{ e.tp if e.tp is not none else '' }}"
+          data-event-cash="{{ e.amount if e.type == 'CASHFLOW' and e.amount is not none else '' }}"
+          data-event-reason="{{ e.reason or '' }}"
+          data-event-note="{{ e.note or '' }}"
+          data-event-image-url="{{ e.image_url or '' }}"
+          data-event-review="{{ e.review or '' }}"
+        >
+          <td>{{ e.ts }}</td>
+          <td>{{ e.ticker or "" }}</td>
+          <td>{{ e.market or "" }}</td>
+          <td>{{ e.currency or "" }}</td>
+          <td>{{ e.symbol_name or "" }}</td>
+          <td>
+            {% set type_class = e.type|lower|replace("_", "-") %}
+            <span class="badge badge-{{ type_class }}">{{ e.type }}</span>
+          </td>
+          <td>{{ e.qty if e.qty is not none else "" }}</td>
+          <td>{{ e.price if e.price is not none else "" }}</td>
+          <td>{{ e.sl if e.sl is not none else "" }} / {{ e.tp if e.tp is not none else "" }}</td>
+          <td>{{ "%.2f"|format(e.amount) if e.amount is not none else "" }}</td>
+          <td>{{ "%.2f"|format(e.unrealized_pnl) if e.unrealized_pnl is not none else "" }}</td>
+          <td>{{ "%.2f"|format(e.realized_pnl) if e.realized_pnl is not none else "" }}</td>
+          <td>{{ "%.2f"|format(e.realized_pnl_local) if e.realized_pnl_local is not none else "" }}</td>
+          <td>
+            <div>{{ "%.2f"|format(e.open_risk) }}</div>
+            {% set delta = e.open_risk_delta if e.open_risk_delta is not none else 0 %}
+            {% if delta > 0 %}
+            <div class="chip-bad">? {{ "%+.2f"|format(delta) }}</div>
+            {% elif delta < 0 %}
+            <div class="chip-ok">? {{ "%+.2f"|format(delta) }}</div>
+            {% else %}
+            <div class="chip-neutral">? {{ "%+.2f"|format(delta) }}</div>
+            {% endif %}
+            {% if e.open_risk_delta_details %}
+            <div class="small">{{ e.open_risk_delta_details }}</div>
+            {% endif %}
+          </td>
+          <td>{{ "%.2f"|format(e.book_asset) }}</td>
+          <td class="col-reason-note">
+            <div>{{ e.reason or "" }}</div>
+            <div class="small">{{ e.note or "" }}</div>
+          </td>
+          <td>
+            {% if e.trade_group_id %}
+              <a href="/trades/{{ e.trade_group_id }}">trade#{{ e.trade_group_id }}</a>
+            {% endif %}
+            <div class="small">{{ e.review or "" }}</div>
+          </td>
+          <td>
+            {% if e.image_url %}
+              <a href="{{ e.image_url }}" target="_blank" rel="noreferrer">
+                <img src="{{ e.image_url }}" alt="event image" style="max-width:72px; max-height:72px; object-fit:cover; border-radius:8px;" />
+              </a>
+            {% endif %}
+          </td>
+          <td>
+            {% if can_write %}
+              <button type="button" class="secondary event-attach-image" data-event-id="{{ e.id }}">Attach</button>
+              <button type="button" class="secondary event-edit" data-event-id="{{ e.id }}">Edit</button>
+              <button type="button" class="secondary event-delete" data-event-id="{{ e.id }}">Delete</button>
+            {% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div id="journal-mobile-cards" class="journal-mobile-cards">
+    {% for e in data.events %}
+    <article class="journal-mobile-card" data-event-id="{{ e.id }}">
+      <div class="journal-mobile-card-head">
+        <strong>#{{ e.id }} {{ e.type }}</strong>
+        <span class="small">{{ e.ts }}</span>
+      </div>
+      <div class="journal-mobile-card-grid">
+        <div><span class="small">Ticker</span><div>{{ e.ticker or "-" }}</div></div>
+        <div><span class="small">Market</span><div>{{ e.market or "" }}</div></div>
+        <div><span class="small">Currency</span><div>{{ e.currency or "" }}</div></div>
+        <div><span class="small">Qty/Price</span><div>{{ e.qty if e.qty is not none else "" }} / {{ e.price if e.price is not none else "" }}</div></div>
+        <div><span class="small">Unrealized PnL</span><div>{{ "%.2f"|format(e.unrealized_pnl) if e.unrealized_pnl is not none else "" }}</div></div>
+        <div><span class="small">Realized PnL</span><div>{{ "%.2f"|format(e.realized_pnl) if e.realized_pnl is not none else "" }}</div></div>
+        <div><span class="small">Reason</span><div>{{ e.reason or "" }}</div></div>
+      </div>
+      {% if e.image_url %}
+      <div style="margin-top:8px;">
+        <a href="{{ e.image_url }}" target="_blank" rel="noreferrer">
+          <img src="{{ e.image_url }}" alt="event image" style="max-width:100%; max-height:180px; object-fit:cover; border-radius:8px;" />
+        </a>
+      </div>
+      {% endif %}
+      {% if can_write %}
+      <div class="form-row" style="margin-top:8px;">
+        <button type="button" class="secondary event-attach-image" data-event-id="{{ e.id }}">Attach</button>
+        <button type="button" class="secondary event-edit" data-event-id="{{ e.id }}">Edit</button>
+        <button type="button" class="secondary event-delete" data-event-id="{{ e.id }}">Delete</button>
+      </div>
+      {% endif %}
+    </article>
+    {% endfor %}
+  </div>
+</section>
+
+{% if can_write %}
+  <input id="event-image-file-input" type="file" accept="image/*" style="display:none" />
+  <input id="event-image-file-input-camera" type="file" accept="image/*" capture="environment" style="display:none" />
+  <div class="quick-attach-fab">
+    <button id="quick-attach-gallery-fab" type="button">Gallery</button>
+    <button id="quick-attach-camera-fab" type="button">Camera</button>
+  </div>
+{% endif %}
+
+<script>
+  const canWrite = {{ "true" if can_write else "false" }};
+
+  function parsePayload(form, numericFields) {
+    const fd = new FormData(form);
+    const payload = {};
+    for (const [key, value] of fd.entries()) {
+      if (value === "") continue;
+      payload[key] = numericFields.includes(key) ? Number(value) : value;
+    }
+    return payload;
+  }
+
+  async function jsonRequest(url, method, payload = null) {
+    const options = {
+      method,
+      headers: {},
+    };
+    if (payload !== null) {
+      options.headers["Content-Type"] = "application/json";
+      options.body = JSON.stringify(payload);
+    }
+
+    const res = await fetch(url, {
+      ...options,
+    });
+
+    if (!res.ok) {
+      let message = `${res.status}`;
+      try {
+        const body = await res.json();
+        message = body.detail || JSON.stringify(body);
+      } catch (_) {}
+      throw new Error(message);
+    }
+
+    const text = await res.text();
+    return text ? JSON.parse(text) : {};
+  }
+
+  async function postJson(url, payload) {
+    return jsonRequest(url, "POST", payload);
+  }
+
+  async function bindJsonForm(formId, url, errorId, numericFields) {
+    const form = document.getElementById(formId);
+    const errorBox = document.getElementById(errorId);
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      errorBox.textContent = "";
+
+      try {
+        const payload = parsePayload(form, numericFields);
+        await postJson(url, payload);
+        window.location.reload();
+      } catch (err) {
+        errorBox.textContent = `Error: ${err.message}`;
+      }
+    });
+  }
+
+  if (canWrite) {
+    const lotTemplate = document.getElementById("lot-options-template");
+    const allocationsBox = document.getElementById("allocations");
+    const sellTickerInput = document.getElementById("sell-ticker");
+
+    function fillLotOptions(selectElem, ticker) {
+      selectElem.innerHTML = '<option value="">Select Lot</option>';
+      const normalizedTicker = (ticker || "").trim().toUpperCase();
+
+      for (const opt of lotTemplate.options) {
+        if (!opt.value) continue;
+        const optTicker = (opt.dataset.ticker || "").toUpperCase();
+        if (normalizedTicker && optTicker !== normalizedTicker) continue;
+
+        const cloned = opt.cloneNode(true);
+        selectElem.appendChild(cloned);
+      }
+    }
+
+    function addAllocationRow(ticker) {
+      const row = document.createElement("div");
+      row.className = "form-row allocation-row";
+
+      const lotSelect = document.createElement("select");
+      lotSelect.className = "alloc-lot";
+      lotSelect.required = true;
+      fillLotOptions(lotSelect, ticker);
+
+      const qtyInput = document.createElement("input");
+      qtyInput.className = "alloc-qty";
+      qtyInput.type = "number";
+      qtyInput.step = "any";
+      qtyInput.placeholder = "qty_sold";
+      qtyInput.required = true;
+
+      const removeButton = document.createElement("button");
+      removeButton.type = "button";
+      removeButton.className = "secondary";
+      removeButton.textContent = "Remove";
+      removeButton.addEventListener("click", () => row.remove());
+
+      row.appendChild(lotSelect);
+      row.appendChild(qtyInput);
+      row.appendChild(removeButton);
+      allocationsBox.appendChild(row);
+    }
+
+    function refreshAllocationOptions() {
+      const ticker = sellTickerInput.value;
+      const selects = allocationsBox.querySelectorAll(".alloc-lot");
+      selects.forEach((select) => {
+        const currentValue = select.value;
+        fillLotOptions(select, ticker);
+        if (currentValue && Array.from(select.options).some((o) => o.value === currentValue)) {
+          select.value = currentValue;
+        }
+      });
+    }
+
+    document.getElementById("add-allocation").addEventListener("click", () => {
+      addAllocationRow(sellTickerInput.value);
+    });
+
+    sellTickerInput.addEventListener("input", refreshAllocationOptions);
+
+    addAllocationRow("");
+
+    document.getElementById("sell-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const errorBox = document.getElementById("sell-error");
+      errorBox.textContent = "";
+
+      try {
+        const form = e.target;
+        const payload = {
+          ticker: form.ticker.value.trim().toUpperCase(),
+          price: Number(form.price.value),
+          fee: form.fee.value === "" ? 0 : Number(form.fee.value),
+          allocations: [],
+        };
+
+        if (!payload.ticker) {
+          throw new Error("ticker is required");
+        }
+
+        if (form.reason.value) payload.reason = form.reason.value;
+        if (form.note.value) payload.note = form.note.value;
+        if (form.ts.value) payload.ts = form.ts.value;
+        if (form.market.value) payload.market = form.market.value;
+        if (form.currency.value) payload.currency = form.currency.value;
+        if (form.fx_rate_to_base.value) payload.fx_rate_to_base = Number(form.fx_rate_to_base.value);
+        if (form.trade_group_id.value) payload.trade_group_id = Number(form.trade_group_id.value);
+
+        const rows = allocationsBox.querySelectorAll(".allocation-row");
+        if (!rows.length) {
+          throw new Error("at least one allocation is required");
+        }
+
+        for (const row of rows) {
+          const lotId = row.querySelector(".alloc-lot").value;
+          const qty = row.querySelector(".alloc-qty").value;
+          if (!lotId || !qty) {
+            throw new Error("allocation lot_id and qty_sold are required");
+          }
+          payload.allocations.push({ lot_id: Number(lotId), qty_sold: Number(qty) });
+        }
+
+        await postJson("/api/sell", payload);
+        window.location.reload();
+      } catch (err) {
+        errorBox.textContent = `Error: ${err.message}`;
+      }
+    });
+
+    document.getElementById("sl-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const errorBox = document.getElementById("sl-error");
+      errorBox.textContent = "";
+
+      try {
+        const form = e.target;
+        const payload = {
+          lot_id: Number(form.lot_id.value),
+        };
+
+        if (!form.lot_id.value) {
+          throw new Error("lot_id is required");
+        }
+        if (!form.new_sl.value && !form.new_tp.value) {
+          throw new Error("new_sl or new_tp is required");
+        }
+
+        if (form.new_sl.value) payload.new_sl = Number(form.new_sl.value);
+        if (form.new_tp.value) payload.new_tp = Number(form.new_tp.value);
+        if (form.reason.value) payload.reason = form.reason.value;
+        if (form.note.value) payload.note = form.note.value;
+        if (form.ts.value) payload.ts = form.ts.value;
+
+        await postJson("/api/lot/sl", payload);
+        window.location.reload();
+      } catch (err) {
+        errorBox.textContent = `Error: ${err.message}`;
+      }
+    });
+
+    bindJsonForm("buy-form", "/api/buy", "buy-error", ["qty", "price", "fee", "sl", "tp", "trade_group_id", "fx_rate_to_base"]);
+    bindJsonForm("cashflow-form", "/api/cashflow", "cashflow-error", ["cash_amount", "fx_rate_to_base"]);
+  }
+
+  const journalTable = document.getElementById("journal-table");
+  const journalTbody = document.getElementById("journal-tbody");
+  const journalMobileCards = document.getElementById("journal-mobile-cards");
+  const journalFilterForm = document.getElementById("journal-filter-form");
+  const journalResetBtn = document.getElementById("journal-reset-btn");
+  const journalFilterError = document.getElementById("journal-filter-error");
+  const journalSummary = document.getElementById("journal-summary");
+  const journalPageInfo = document.getElementById("journal-page-info");
+  const journalPagination = document.getElementById("journal-pagination");
+  const activeFilterBadges = document.getElementById("active-filter-badges");
+
+  const journalState = {{ {
+    "page": data.page,
+    "page_size": data.page_size,
+    "q": data.filters.q,
+    "event_type": data.filters.event_type,
+    "date_from": data.filters.date_from,
+    "date_to": data.filters.date_to,
+  } | tojson }};
+  function escapeHtml(value) {
+    return String(value ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/\"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
+
+  function formatTs(ts) {
+    if (!ts) return "";
+    return String(ts).replace("T", " ");
+  }
+
+  function formatMaybeNumber(value, digits = 2) {
+    if (value === null || value === undefined || value === "") return "";
+    const n = Number(value);
+    if (!Number.isFinite(n)) return "";
+    return n.toFixed(digits);
+  }
+
+  function formatSigned(value) {
+    const n = Number(value || 0);
+    if (!Number.isFinite(n)) return "+0.00";
+    return `${n >= 0 ? "+" : ""}${n.toFixed(2)}`;
+  }
+
+  function typeClass(type) {
+    return String(type || "").toLowerCase().replace(/_/g, "-");
+  }
+
+  function buildEventRowHtml(e) {
+    const delta = Number.isFinite(Number(e.open_risk_delta)) ? Number(e.open_risk_delta) : 0;
+    const deltaClass = delta > 0 ? "chip-bad" : delta < 0 ? "chip-ok" : "chip-neutral";
+    const cashForDataset = e.type === "CASHFLOW" && e.amount !== null && e.amount !== undefined ? e.amount : "";
+    return `
+      <tr
+        class="journal-row"
+        data-type="${escapeHtml(e.type || "")}"
+        data-event-id="${escapeHtml(e.id || "")}"
+        data-event-type="${escapeHtml(e.type || "")}"
+        data-event-ticker="${escapeHtml(e.ticker || "")}"
+        data-event-market="${escapeHtml(e.market || "")}"
+        data-event-currency="${escapeHtml(e.currency || "")}"
+        data-event-fx-rate="${escapeHtml(e.fx_rate_to_base ?? "")}"
+        data-event-ts="${escapeHtml(e.ts || "")}"
+        data-event-qty="${escapeHtml(e.qty ?? "")}"
+        data-event-price="${escapeHtml(e.price ?? "")}"
+        data-event-fee="${escapeHtml(e.fee ?? "")}"
+        data-event-sl="${escapeHtml(e.sl ?? "")}"
+        data-event-tp="${escapeHtml(e.tp ?? "")}"
+        data-event-cash="${escapeHtml(cashForDataset)}"
+        data-event-reason="${escapeHtml(e.reason || "")}"
+        data-event-note="${escapeHtml(e.note || "")}"
+        data-event-image-url="${escapeHtml(e.image_url || "")}"
+        data-event-review="${escapeHtml(e.review || "")}"
+      >
+        <td>${escapeHtml(formatTs(e.ts))}</td>
+        <td>${escapeHtml(e.ticker || "")}</td>
+        <td>${escapeHtml(e.market || "")}</td>
+        <td>${escapeHtml(e.currency || "")}</td>
+        <td>${escapeHtml(e.symbol_name || "")}</td>
+        <td><span class="badge badge-${escapeHtml(typeClass(e.type))}">${escapeHtml(e.type || "")}</span></td>
+        <td>${escapeHtml(e.qty ?? "")}</td>
+        <td>${escapeHtml(e.price ?? "")}</td>
+        <td>${escapeHtml(e.sl ?? "")} / ${escapeHtml(e.tp ?? "")}</td>
+        <td>${escapeHtml(formatMaybeNumber(e.amount, 2))}</td>
+        <td>${escapeHtml(formatMaybeNumber(e.unrealized_pnl, 2))}</td>
+        <td>${escapeHtml(formatMaybeNumber(e.realized_pnl, 2))}</td>
+        <td>${escapeHtml(formatMaybeNumber(e.realized_pnl_local, 2))}</td>
+        <td>
+          <div>${escapeHtml(formatMaybeNumber(e.open_risk, 2))}</div>
+          <div class="${deltaClass}">? ${escapeHtml(formatSigned(e.open_risk_delta))}</div>
+          ${e.open_risk_delta_details ? `<div class="small">${escapeHtml(e.open_risk_delta_details)}</div>` : ""}
+        </td>
+        <td>${escapeHtml(formatMaybeNumber(e.book_asset, 2))}</td>
+        <td class="col-reason-note">
+          <div>${escapeHtml(e.reason || "")}</div>
+          <div class="small">${escapeHtml(e.note || "")}</div>
+        </td>
+        <td>
+          ${e.trade_group_id ? `<a href="/trades/${encodeURIComponent(e.trade_group_id)}">trade#${escapeHtml(e.trade_group_id)}</a>` : ""}
+          <div class="small">${escapeHtml(e.review || "")}</div>
+        </td>
+        <td>
+          ${e.image_url
+            ? `<a href="${escapeHtml(e.image_url)}" target="_blank" rel="noreferrer"><img src="${escapeHtml(e.image_url)}" alt="event image" style="max-width:72px; max-height:72px; object-fit:cover; border-radius:8px;" /></a>`
+            : ""}
+        </td>
+        <td>${canWrite
+          ? `<button type="button" class="secondary event-attach-image" data-event-id="${escapeHtml(e.id)}">Attach</button>
+             <button type="button" class="secondary event-edit" data-event-id="${escapeHtml(e.id)}">Edit</button>
+             <button type="button" class="secondary event-delete" data-event-id="${escapeHtml(e.id)}">Delete</button>`
+          : ""}</td>
+      </tr>
+    `;
+  }
+
+  function buildEventCardHtml(e) {
+    return `
+      <article class="journal-mobile-card" data-event-id="${escapeHtml(e.id || "")}">
+        <div class="journal-mobile-card-head">
+          <strong>#${escapeHtml(e.id || "")} ${escapeHtml(e.type || "")}</strong>
+          <span class="small">${escapeHtml(formatTs(e.ts))}</span>
+        </div>
+        <div class="journal-mobile-card-grid">
+          <div><span class="small">Ticker</span><div>${escapeHtml(e.ticker || "-")}</div></div>
+          <div><span class="small">Market</span><div>${escapeHtml(e.market || "")}</div></div>
+          <div><span class="small">Currency</span><div>${escapeHtml(e.currency || "")}</div></div>
+          <div><span class="small">Qty/Price</span><div>${escapeHtml(e.qty ?? "")} / ${escapeHtml(e.price ?? "")}</div></div>
+          <div><span class="small">Unrealized PnL</span><div>${escapeHtml(formatMaybeNumber(e.unrealized_pnl, 2))}</div></div>
+          <div><span class="small">Realized PnL</span><div>${escapeHtml(formatMaybeNumber(e.realized_pnl, 2))}</div></div>
+          <div><span class="small">Reason</span><div>${escapeHtml(e.reason || "")}</div></div>
+        </div>
+        ${e.image_url ? `<div style="margin-top:8px;"><a href="${escapeHtml(e.image_url)}" target="_blank" rel="noreferrer"><img src="${escapeHtml(e.image_url)}" alt="event image" style="max-width:100%; max-height:180px; object-fit:cover; border-radius:8px;" /></a></div>` : ""}
+        ${canWrite
+          ? `<div class="form-row" style="margin-top:8px;">
+              <button type="button" class="secondary event-attach-image" data-event-id="${escapeHtml(e.id)}">Attach</button>
+              <button type="button" class="secondary event-edit" data-event-id="${escapeHtml(e.id)}">Edit</button>
+              <button type="button" class="secondary event-delete" data-event-id="${escapeHtml(e.id)}">Delete</button>
+            </div>`
+          : ""}
+      </article>
+    `;
+  }
+
+  function renderActiveFilterBadges(filters) {
+    const chips = [];
+    if (filters.q) chips.push(`<span class="pill">Query: ${escapeHtml(filters.q)}</span>`);
+    if (filters.event_type) chips.push(`<span class="pill">Type: ${escapeHtml(filters.event_type)}</span>`);
+    if (filters.date_from) chips.push(`<span class="pill">From date: ${escapeHtml(filters.date_from)}</span>`);
+    if (filters.date_to) chips.push(`<span class="pill">To date: ${escapeHtml(filters.date_to)}</span>`);
+    if (!chips.length) {
+      activeFilterBadges.innerHTML = "";
+      return;
+    }
+    activeFilterBadges.innerHTML = `<span class="pill">Active filters</span>${chips.join("")}`;
+  }
+
+  function renderJournalPagination(data) {
+    const pageButtons = (data.page_numbers || [])
+      .map((p) => {
+        const current = p === data.page;
+        return `<button type="button" class="page-num${current ? " page-num-current" : ""}" data-page="${p}" ${current ? "disabled" : ""}>${p}</button>`;
+      })
+      .join("");
+
+    journalPagination.innerHTML = `
+      <button type="button" class="page-nav-btn${data.has_prev ? "" : " page-nav-disabled"}" ${data.has_prev && data.prev_page ? `data-page="${data.prev_page}"` : "disabled"}>Prev</button>
+      <div id="journal-pagination-pages" class="journal-pagination-pages">${pageButtons}</div>
+      <button type="button" class="page-nav-btn${data.has_next ? "" : " page-nav-disabled"}" ${data.has_next && data.next_page ? `data-page="${data.next_page}"` : "disabled"}>Next</button>
+    `;
+  }
+
+  function updateFilterFormFromState() {
+    journalFilterForm.q.value = journalState.q || "";
+    journalFilterForm.event_type.value = journalState.event_type || "";
+    journalFilterForm.date_from.value = journalState.date_from || "";
+    journalFilterForm.date_to.value = journalState.date_to || "";
+  }
+
+  function readFiltersFromForm() {
+    return {
+      q: journalFilterForm.q.value.trim(),
+      event_type: journalFilterForm.event_type.value || "",
+      date_from: journalFilterForm.date_from.value || "",
+      date_to: journalFilterForm.date_to.value || "",
+    };
+  }
+
+  function buildJournalParams(state) {
+    const params = new URLSearchParams();
+    params.set("page", String(state.page || 1));
+    params.set("page_size", String(state.page_size || 50));
+    if (state.q) params.set("q", state.q);
+    if (state.event_type) params.set("event_type", state.event_type);
+    if (state.date_from) params.set("date_from", state.date_from);
+    if (state.date_to) params.set("date_to", state.date_to);
+    return params;
+  }
+
+  async function loadJournalPage(page, pushUrl = true) {
+    journalFilterError.textContent = "";
+    journalState.page = Math.max(1, Number(page) || 1);
+    const params = buildJournalParams(journalState);
+
+    try {
+      const data = await jsonRequest(`/api/journal?${params.toString()}`, "GET");
+      journalState.page = data.page;
+      journalSummary.textContent =
+        `Showing ${data.events.length} / ${data.filtered_events} filtered events (${data.total_all_events} total)`;
+      journalPageInfo.textContent = `Page ${data.page} / ${data.total_pages} | Page Size ${data.page_size}`;
+      journalTbody.innerHTML = data.events.map((e) => buildEventRowHtml(e)).join("");
+      if (journalMobileCards) {
+        journalMobileCards.innerHTML = data.events.map((e) => buildEventCardHtml(e)).join("");
+      }
+      renderActiveFilterBadges(data.filters || {});
+      renderJournalPagination(data);
+
+      if (pushUrl) {
+        const url = `/journal?${buildJournalParams(journalState).toString()}`;
+        window.history.pushState({ ...journalState }, "", url);
+      }
+    } catch (err) {
+      journalFilterError.textContent = `Error: ${err.message}`;
+    }
+  }
+
+  journalFilterForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    Object.assign(journalState, readFiltersFromForm());
+    await loadJournalPage(1, true);
+  });
+
+  journalResetBtn.addEventListener("click", async () => {
+    journalFilterForm.reset();
+    Object.assign(journalState, {
+      q: "",
+      event_type: "",
+      date_from: "",
+      date_to: "",
+    });
+    await loadJournalPage(1, true);
+  });
+
+  journalPagination.addEventListener("click", async (e) => {
+    const button = e.target.closest("button[data-page]");
+    if (!button || button.disabled) return;
+    const page = Number(button.dataset.page || "1");
+    await loadJournalPage(page, true);
+  });
+
+  window.addEventListener("popstate", async () => {
+    const params = new URLSearchParams(window.location.search);
+    Object.assign(journalState, {
+      page: Number(params.get("page") || "1"),
+      page_size: Number(params.get("page_size") || String(journalState.page_size || 50)),
+      q: params.get("q") || "",
+      event_type: params.get("event_type") || "",
+      date_from: params.get("date_from") || "",
+      date_to: params.get("date_to") || "",
+    });
+    updateFilterFormFromState();
+    await loadJournalPage(journalState.page, false);
+  });
+
+  if (canWrite) {
+    const eventImageFileInput = document.getElementById("event-image-file-input");
+    const eventImageFileInputCamera = document.getElementById("event-image-file-input-camera");
+    const quickAttachEventSelect = document.getElementById("quick-attach-event-select");
+    const quickAttachEventIdInput = document.getElementById("quick-attach-event-id");
+    const quickAttachLatestBtn = document.getElementById("quick-attach-latest-btn");
+    const quickAttachGalleryBtn = document.getElementById("quick-attach-gallery-btn");
+    const quickAttachCameraBtn = document.getElementById("quick-attach-camera-btn");
+    const quickAttachGalleryFab = document.getElementById("quick-attach-gallery-fab");
+    const quickAttachCameraFab = document.getElementById("quick-attach-camera-fab");
+    const quickAttachStatus = document.getElementById("quick-attach-status");
+    let attachTargetEventId = null;
+    let selectedEventId = null;
+
+    const handleActionClick = async (btn) => {
+      const eventId = btn.dataset.eventId;
+      if (!eventId) return;
+
+      if (btn.classList.contains("event-attach-image")) {
+        attachTargetEventId = eventId;
+        eventImageFileInput?.click();
+        return;
+      }
+
+      if (btn.classList.contains("event-delete")) {
+        const ok = window.confirm(`Delete event #${eventId}? This cannot be undone.`);
+        if (!ok) return;
+        try {
+          await jsonRequest(`/api/events/${eventId}`, "DELETE");
+          await loadJournalPage(journalState.page, false);
+        } catch (err) {
+          window.alert(`Delete failed: ${err.message}`);
+        }
+        return;
+      }
+
+      if (!btn.classList.contains("event-edit")) return;
+      const row = btn.closest("tr.journal-row") || document.querySelector(`tr.journal-row[data-event-id="${eventId}"]`);
+      if (!row) return;
+
+      let defaults;
+      try {
+        defaults = buildEditDefaultPayload(row);
+      } catch (err) {
+        window.alert(`Cannot open editor: ${err.message}`);
+        return;
+      }
+
+      const edited = window.prompt(
+        "Edit JSON payload and submit. Use null to clear optional values.",
+        JSON.stringify(defaults, null, 2),
+      );
+      if (edited === null) return;
+
+      let payload;
+      try {
+        payload = JSON.parse(edited);
+      } catch (_) {
+        window.alert("Invalid JSON");
+        return;
+      }
+
+      try {
+        await jsonRequest(`/api/events/${eventId}`, "PATCH", payload);
+        await loadJournalPage(journalState.page, false);
+      } catch (err) {
+        window.alert(`Edit failed: ${err.message}`);
+      }
+    };
+
+    const baseLoadJournalPage = loadJournalPage;
+    loadJournalPage = async function(page, pushUrl = true) {
+      await baseLoadJournalPage(page, pushUrl);
+      if (selectedEventId && !document.querySelector(`tr.journal-row[data-event-id="${selectedEventId}"]`)) {
+        selectedEventId = null;
+        if (quickAttachEventIdInput) quickAttachEventIdInput.value = "";
+        if (quickAttachEventSelect) quickAttachEventSelect.value = "";
+      }
+      applySelectedEventRow();
+    };
+
+    function applySelectedEventRow() {
+      const rows = Array.from(document.querySelectorAll("tr.journal-row"));
+      rows.forEach((row) => {
+        const isSelected = selectedEventId && row.dataset.eventId === String(selectedEventId);
+        row.classList.toggle("journal-row-selected", !!isSelected);
+      });
+      const cards = Array.from(document.querySelectorAll(".journal-mobile-card"));
+      cards.forEach((card) => {
+        const isSelected = selectedEventId && card.dataset.eventId === String(selectedEventId);
+        card.classList.toggle("journal-mobile-card-selected", !!isSelected);
+      });
+    }
+
+    function setSelectedEventId(value) {
+      selectedEventId = value ? String(value) : null;
+      if (quickAttachEventIdInput) {
+        quickAttachEventIdInput.value = selectedEventId || "";
+      }
+      if (quickAttachEventSelect) {
+        quickAttachEventSelect.value = selectedEventId || "";
+      }
+      applySelectedEventRow();
+    }
+
+    function getQuickAttachEventId() {
+      const value = (quickAttachEventIdInput?.value || quickAttachEventSelect?.value || "").trim();
+      if (!value) {
+        throw new Error("Event ID를 먼저 입력하세요.");
+      }
+      const eventIdNum = Number(value);
+      if (!Number.isInteger(eventIdNum) || eventIdNum < 1) {
+        throw new Error("Event ID는 1 이상의 정수여야 합니다.");
+      }
+      return String(eventIdNum);
+    }
+
+    function setQuickAttachStatus(message, isError = false) {
+      if (!quickAttachStatus) return;
+      quickAttachStatus.textContent = message || "";
+      quickAttachStatus.style.color = isError ? "#a52a2a" : "";
+    }
+
+    async function uploadImageAndGetUrl(file) {
+      if (!file) throw new Error("image file is required");
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch("/api/upload-image", {
+        method: "POST",
+        body: fd,
+      });
+      if (!res.ok) {
+        let message = `${res.status}`;
+        try {
+          const body = await res.json();
+          message = body.detail || JSON.stringify(body);
+        } catch (_) {}
+        throw new Error(message);
+      }
+      const data = await res.json();
+      if (!data || !data.image_url) throw new Error("missing image_url in upload response");
+      return data.image_url;
+    }
+
+    async function attachImageToEvent(eventId, file) {
+      const imageUrl = await uploadImageAndGetUrl(file);
+      await jsonRequest(`/api/events/${eventId}`, "PATCH", { image_url: imageUrl });
+      await loadJournalPage(journalState.page, false);
+    }
+
+    eventImageFileInput?.addEventListener("change", async () => {
+      if (!attachTargetEventId) return;
+      const file = eventImageFileInput.files && eventImageFileInput.files[0];
+      eventImageFileInput.value = "";
+      if (!file) return;
+      try {
+        await attachImageToEvent(attachTargetEventId, file);
+        setQuickAttachStatus(`Event #${attachTargetEventId}에 이미지가 첨부되었습니다.`);
+        setSelectedEventId(attachTargetEventId);
+      } catch (err) {
+        setQuickAttachStatus(`첨부 실패: ${err.message}`, true);
+        window.alert(`Image attach failed: ${err.message}`);
+      } finally {
+        attachTargetEventId = null;
+      }
+    });
+
+    eventImageFileInputCamera?.addEventListener("change", async () => {
+      if (!attachTargetEventId) return;
+      const file = eventImageFileInputCamera.files && eventImageFileInputCamera.files[0];
+      eventImageFileInputCamera.value = "";
+      if (!file) return;
+      try {
+        await attachImageToEvent(attachTargetEventId, file);
+        setQuickAttachStatus(`Event #${attachTargetEventId}에 이미지가 첨부되었습니다.`);
+        setSelectedEventId(attachTargetEventId);
+      } catch (err) {
+        setQuickAttachStatus(`첨부 실패: ${err.message}`, true);
+        window.alert(`Image attach failed: ${err.message}`);
+      } finally {
+        attachTargetEventId = null;
+      }
+    });
+
+    quickAttachGalleryBtn?.addEventListener("click", () => {
+      try {
+        attachTargetEventId = getQuickAttachEventId();
+        setSelectedEventId(attachTargetEventId);
+        setQuickAttachStatus("");
+        eventImageFileInput?.click();
+      } catch (err) {
+        setQuickAttachStatus(err.message, true);
+      }
+    });
+
+    quickAttachCameraBtn?.addEventListener("click", () => {
+      try {
+        attachTargetEventId = getQuickAttachEventId();
+        setSelectedEventId(attachTargetEventId);
+        setQuickAttachStatus("");
+        eventImageFileInputCamera?.click();
+      } catch (err) {
+        setQuickAttachStatus(err.message, true);
+      }
+    });
+
+    quickAttachGalleryFab?.addEventListener("click", () => quickAttachGalleryBtn?.click());
+    quickAttachCameraFab?.addEventListener("click", () => quickAttachCameraBtn?.click());
+
+    quickAttachLatestBtn?.addEventListener("click", () => {
+      const firstRow = document.querySelector("tr.journal-row");
+      if (!firstRow?.dataset?.eventId) {
+        setQuickAttachStatus("현재 페이지에 이벤트가 없습니다.", true);
+        return;
+      }
+      setSelectedEventId(firstRow.dataset.eventId);
+      setQuickAttachStatus(`Event #${firstRow.dataset.eventId} 선택됨`);
+    });
+
+    quickAttachEventSelect?.addEventListener("change", () => {
+      setSelectedEventId(quickAttachEventSelect.value || null);
+      if (selectedEventId) {
+        setQuickAttachStatus(`Event #${selectedEventId} 선택됨`);
+      }
+    });
+
+    quickAttachEventIdInput?.addEventListener("input", () => {
+      const value = (quickAttachEventIdInput.value || "").trim();
+      setSelectedEventId(value || null);
+    });
+
+    journalTbody?.addEventListener("click", (e) => {
+      const row = e.target?.closest ? e.target.closest("tr.journal-row") : null;
+      if (!row?.dataset?.eventId) return;
+      setSelectedEventId(row.dataset.eventId);
+      setQuickAttachStatus(`Event #${row.dataset.eventId} 선택됨`);
+    });
+    journalMobileCards?.addEventListener("click", (e) => {
+      const card = e.target?.closest ? e.target.closest(".journal-mobile-card") : null;
+      if (!card?.dataset?.eventId) return;
+      setSelectedEventId(card.dataset.eventId);
+      setQuickAttachStatus(`Event #${card.dataset.eventId} 선택됨`);
+    });
+
+    document.addEventListener("paste", async (e) => {
+      const items = Array.from(e.clipboardData?.items || []);
+      const imgItem = items.find((item) => item.type && item.type.startsWith("image/"));
+      if (!imgItem) return;
+      const row = e.target && e.target.closest ? e.target.closest("tr.journal-row") : null;
+      let eventId = row?.dataset?.eventId || null;
+      if (!eventId) {
+        eventId = window.prompt("붙여넣은 이미지를 연결할 Event ID를 입력하세요.");
+      }
+      if (!eventId) return;
+      const file = imgItem.getAsFile();
+      if (!file) return;
+      e.preventDefault();
+      try {
+        await attachImageToEvent(eventId, file);
+        setSelectedEventId(eventId);
+      } catch (err) {
+        window.alert(`Paste image failed: ${err.message}`);
+      }
+    });
+
+    function toNullableNumber(value, fieldName) {
+      if (value === null || value === undefined || value === "") return null;
+      const num = Number(value);
+      if (!Number.isFinite(num)) {
+        throw new Error(`${fieldName} must be a number`);
+      }
+      return num;
+    }
+
+    function buildEditDefaultPayload(row) {
+      const type = row.dataset.eventType;
+      const payload = {
+        ticker: row.dataset.eventTicker || null,
+        ts: row.dataset.eventTs || null,
+        market: row.dataset.eventMarket || null,
+        currency: row.dataset.eventCurrency || null,
+        fx_rate_to_base: toNullableNumber(row.dataset.eventFxRate, "fx_rate_to_base"),
+        reason: row.dataset.eventReason || null,
+        note: row.dataset.eventNote || null,
+        image_url: row.dataset.eventImageUrl || null,
+      };
+
+      if (type === "BUY") {
+        payload.qty = toNullableNumber(row.dataset.eventQty, "qty");
+        payload.price = toNullableNumber(row.dataset.eventPrice, "price");
+        payload.fee = toNullableNumber(row.dataset.eventFee, "fee");
+        payload.sl = toNullableNumber(row.dataset.eventSl, "sl");
+        payload.tp = toNullableNumber(row.dataset.eventTp, "tp");
+      } else if (type === "SELL") {
+        payload.price = toNullableNumber(row.dataset.eventPrice, "price");
+        payload.fee = toNullableNumber(row.dataset.eventFee, "fee");
+      } else if (type === "CASHFLOW") {
+        payload.cash_amount = toNullableNumber(row.dataset.eventCash, "cash_amount");
+      } else if (type === "SL_UPDATE") {
+        payload.sl = toNullableNumber(row.dataset.eventSl, "sl");
+        payload.tp = toNullableNumber(row.dataset.eventTp, "tp");
+      } else if (type === "REVIEW") {
+        payload.review_text = row.dataset.eventReview || null;
+      }
+
+      return payload;
+    }
+
+    journalTable.addEventListener("click", async (e) => {
+      const btn = e.target.closest("button");
+      if (!btn) return;
+      await handleActionClick(btn);
+    });
+
+    journalMobileCards?.addEventListener("click", async (e) => {
+      const btn = e.target.closest("button");
+      if (!btn) return;
+      await handleActionClick(btn);
+    });
+
+    const initialRow = document.querySelector("tr.journal-row");
+    if (initialRow?.dataset?.eventId) {
+      setSelectedEventId(initialRow.dataset.eventId);
+      setQuickAttachStatus(`Event #${initialRow.dataset.eventId} 선택됨`);
+    }
+  }
+
+</script>
+{% endblock %}
+
+
+

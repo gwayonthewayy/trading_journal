@@ -1,0 +1,21 @@
+[tool.poetry]
+name = "trade-journal-app"
+version = "0.1.0"
+description = "Single-user trade journal and portfolio app"
+authors = ["soso6079 <soso6079@example.com>"]
+packages = [{ include = "app" }]
+
+[tool.poetry.dependencies]
+python = "^3.12"
+fastapi = "^0.116.1"
+uvicorn = {extras = ["standard"], version = "^0.35.0"}
+sqlmodel = "^0.0.24"
+jinja2 = "^3.1.6"
+python-multipart = "^0.0.20"
+pandas = "^2.3.1"
+yfinance = "^0.2.54"
+argon2-cffi = "^23.1.0"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"

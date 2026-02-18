@@ -1,0 +1,166 @@
+{% extends "base.html" %}
+{% block page_header %}
+<section class="page-head">
+  <h1>Trade Group #{{ data.trade_group.id }}</h1>
+  <p>{{ data.trade_group.title }}</p>
+  <div class="pill-row">
+    <span class="pill">Opened {{ data.trade_group.opened_at }}</span>
+    <span class="pill">Closed {{ data.trade_group.closed_at or "-" }}</span>
+    <span class="pill">Lots {{ data.lots|length }}</span>
+  </div>
+</section>
+{% endblock %}
+
+{% block content %}
+<section class="card">
+  <div class="card-head">
+    <h3>Group Meta</h3>
+    <p>트레이드 컨텍스트와 리뷰</p>
+  </div>
+  <p><strong>Tags:</strong> {{ data.trade_group.tags or "" }}</p>
+  <p><strong>Note:</strong> {{ data.trade_group.note or "" }}</p>
+
+  <h3>Review</h3>
+  {% if can_write %}
+    <form id="review-form">
+      <input type="hidden" name="trade_group_id" value="{{ data.trade_group.id }}" />
+      <textarea name="review_text" placeholder="Write final review" required>{{ data.trade_group.review or "" }}</textarea>
+      <button type="submit">Save Review</button>
+      <div id="review-error" class="error"></div>
+    </form>
+  {% else %}
+    <p class="small">읽기 전용 모드에서는 리뷰를 수정할 수 없습니다.</p>
+    <div class="table-wrap">
+      <div style="padding: 10px 12px;">{{ data.trade_group.review or "-" }}</div>
+    </div>
+  {% endif %}
+</section>
+
+<section class="card">
+  <div class="card-head">
+    <h3>Lots</h3>
+    <p>진입 lot의 현재 상태</p>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Lot ID</th>
+          <th>Ticker</th>
+          <th>Opened At</th>
+          <th>Qty Open</th>
+          <th>Entry</th>
+          <th>SL</th>
+          <th>TP</th>
+          <th>Buy Fee</th>
+          <th>Reason</th>
+          <th>Note</th>
+          <th>Open Risk</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for lot in data.lots %}
+        <tr>
+          <td>{{ lot.id }}</td>
+          <td>{{ lot.ticker }}</td>
+          <td>{{ lot.opened_at }}</td>
+          <td>{{ "%.4f"|format(lot.qty_open) }}</td>
+          <td>{{ "%.4f"|format(lot.entry_price) }}</td>
+          <td>{{ lot.sl if lot.sl is not none else "" }}</td>
+          <td>{{ lot.tp if lot.tp is not none else "" }}</td>
+          <td>{{ "%.2f"|format(lot.buy_fee) }}</td>
+          <td>{{ lot.buy_reason or "" }}</td>
+          <td>{{ lot.note or "" }}</td>
+          <td>{{ "%.2f"|format(lot.open_risk) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="card">
+  <div class="card-head">
+    <h3>Event Timeline</h3>
+    <p>해당 트레이드 그룹의 이벤트 흐름</p>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>TS</th>
+          <th>Type</th>
+          <th>Ticker</th>
+          <th>Qty</th>
+          <th>Price</th>
+          <th>Fee</th>
+          <th>SL/TP</th>
+          <th>Amount</th>
+          <th>Realized PnL</th>
+          <th>Reason / Note / Alloc</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for event in data.events %}
+        <tr>
+          <td>{{ event.ts }}</td>
+          <td>
+            {% set type_class = event.type|lower|replace("_", "-") %}
+            <span class="badge badge-{{ type_class }}">{{ event.type }}</span>
+          </td>
+          <td>{{ event.ticker or "" }}</td>
+          <td>{{ event.qty if event.qty is not none else "" }}</td>
+          <td>{{ event.price if event.price is not none else "" }}</td>
+          <td>{{ event.fee }}</td>
+          <td>{{ event.sl if event.sl is not none else "" }} / {{ event.tp if event.tp is not none else "" }}</td>
+          <td>{{ "%.2f"|format(event.amount) if event.amount is not none else "" }}</td>
+          <td>{{ "%.2f"|format(event.realized_pnl) if event.realized_pnl is not none else "" }}</td>
+          <td>
+            <div>{{ event.reason or event.review_text or "" }}</div>
+            <div class="small">{{ event.note or "" }}</div>
+            {% if event.allocations %}
+            <div class="small">alloc: {{ event.allocations }}</div>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<script>
+  const reviewForm = document.getElementById("review-form");
+  if (reviewForm) {
+    reviewForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const errorBox = document.getElementById("review-error");
+      errorBox.textContent = "";
+
+      const form = e.target;
+      const payload = {
+        trade_group_id: Number(form.trade_group_id.value),
+        review_text: form.review_text.value,
+      };
+
+      const res = await fetch("/api/review", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) {
+        let message = `${res.status}`;
+        try {
+          const body = await res.json();
+          message = body.detail || JSON.stringify(body);
+        } catch (_) {}
+        errorBox.textContent = `Error: ${message}`;
+        return;
+      }
+
+      window.location.reload();
+    });
+  }
+</script>
+{% endblock %}

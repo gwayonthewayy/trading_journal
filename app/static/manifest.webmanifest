@@ -1,0 +1,17 @@
+{
+  "name": "Trade Journal",
+  "short_name": "TradeJournal",
+  "description": "Trading journal and portfolio tracker",
+  "start_url": "/journal",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f4f4f1",
+  "theme_color": "#1f5473",
+  "icons": [
+    {
+      "src": "/static/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}

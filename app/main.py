@@ -416,10 +416,11 @@ def api_benchmark_returns(
 def api_fx_history(
     currency: str = Query(...),
     days: int = Query(default=90, ge=7, le=365),
+    quote_currency: str | None = Query(default=None),
     _auth: str = Depends(viewer_api_guard),
     session: Session = Depends(get_session),
 ) -> dict:
-    return build_fx_history(session, currency, days)
+    return build_fx_history(session, currency, days, quote_currency=quote_currency)
 
 
 @app.post("/api/upload-image")

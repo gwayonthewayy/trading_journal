@@ -18,6 +18,7 @@
       <p>MDD: {{ "%.2f"|format(data.current.weekly.mdd_pct) }}%</p>
       <p>Return M1: {{ "%.2f"|format(data.current.weekly.return_method1_pct) if data.current.weekly.return_method1_pct is not none else "N/A" }}%</p>
       <p>Return M2: {{ "%.2f"|format(data.current.weekly.return_method2_pct) if data.current.weekly.return_method2_pct is not none else "N/A" }}%</p>
+      <p>Realized Return: {{ "%.2f"|format(data.current.weekly.realized_return_pct) if data.current.weekly.realized_return_pct is not none else "N/A" }}%</p>
       <p>Realized PnL: {{ data.base_currency_symbol }}{{ "{:,.2f}".format(data.current.weekly.realized_pnl) }}</p>
       <p>Win Rate: {{ "%.2f"|format(data.current.weekly.win_rate_pct) if data.current.weekly.win_rate_pct is not none else "N/A" }}%</p>
       <p>BE Rate: {{ "%.2f"|format(data.current.weekly.be_rate_pct) if data.current.weekly.be_rate_pct is not none else "N/A" }}%</p>
@@ -36,6 +37,7 @@
       <p>MDD: {{ "%.2f"|format(data.current.monthly.mdd_pct) }}%</p>
       <p>Return M1: {{ "%.2f"|format(data.current.monthly.return_method1_pct) if data.current.monthly.return_method1_pct is not none else "N/A" }}%</p>
       <p>Return M2: {{ "%.2f"|format(data.current.monthly.return_method2_pct) if data.current.monthly.return_method2_pct is not none else "N/A" }}%</p>
+      <p>Realized Return: {{ "%.2f"|format(data.current.monthly.realized_return_pct) if data.current.monthly.realized_return_pct is not none else "N/A" }}%</p>
       <p>Realized PnL: {{ data.base_currency_symbol }}{{ "{:,.2f}".format(data.current.monthly.realized_pnl) }}</p>
       <p>Win Rate: {{ "%.2f"|format(data.current.monthly.win_rate_pct) if data.current.monthly.win_rate_pct is not none else "N/A" }}%</p>
       <p>BE Rate: {{ "%.2f"|format(data.current.monthly.be_rate_pct) if data.current.monthly.be_rate_pct is not none else "N/A" }}%</p>
@@ -54,6 +56,7 @@
       <p>MDD: {{ "%.2f"|format(data.current.yearly.mdd_pct) }}%</p>
       <p>Return M1: {{ "%.2f"|format(data.current.yearly.return_method1_pct) if data.current.yearly.return_method1_pct is not none else "N/A" }}%</p>
       <p>Return M2: {{ "%.2f"|format(data.current.yearly.return_method2_pct) if data.current.yearly.return_method2_pct is not none else "N/A" }}%</p>
+      <p>Realized Return: {{ "%.2f"|format(data.current.yearly.realized_return_pct) if data.current.yearly.realized_return_pct is not none else "N/A" }}%</p>
       <p>Realized PnL: {{ data.base_currency_symbol }}{{ "{:,.2f}".format(data.current.yearly.realized_pnl) }}</p>
       <p>Win Rate: {{ "%.2f"|format(data.current.yearly.win_rate_pct) if data.current.yearly.win_rate_pct is not none else "N/A" }}%</p>
       <p>BE Rate: {{ "%.2f"|format(data.current.yearly.be_rate_pct) if data.current.yearly.be_rate_pct is not none else "N/A" }}%</p>
@@ -128,14 +131,14 @@
 <section class="card">
   <div class="card-head">
     <h3>FX Rate Chart</h3>
-    <p>Selected currency to base currency rate trend</p>
+    <p>Selected currency to KRW rate trend (e.g. USD/KRW, HKD/KRW)</p>
   </div>
   <div class="form-row">
     <label>
       Currency
       <select id="fx-currency">
-        {% for cur in data.currencies %}
-        <option value="{{ cur }}">{{ cur }}</option>
+        {% for cur in (data.fx_chart_currencies if data.fx_chart_currencies is defined else data.currencies) %}
+        <option value="{{ cur }}" {% if cur == "USD" %}selected{% endif %}>{{ cur }}</option>
         {% endfor %}
       </select>
     </label>
@@ -247,6 +250,7 @@
           <th>BE Rate</th>
           <th>Return M1</th>
           <th>Return M2</th>
+          <th>Realized Return</th>
           <th>MDD</th>
           <th>Realized PnL</th>
           <th>Deposit</th>
@@ -265,6 +269,7 @@
           <td>{{ "%.2f"|format(row.be_rate_pct) if row.be_rate_pct is not none else "N/A" }}%</td>
           <td>{{ "%.2f"|format(row.return_method1_pct) if row.return_method1_pct is not none else "N/A" }}%</td>
           <td>{{ "%.2f"|format(row.return_method2_pct) if row.return_method2_pct is not none else "N/A" }}%</td>
+          <td>{{ "%.2f"|format(row.realized_return_pct) if row.realized_return_pct is not none else "N/A" }}%</td>
           <td>{{ "%.2f"|format(row.mdd_pct) }}%</td>
           <td>{{ data.base_currency_symbol }}{{ "{:,.2f}".format(row.realized_pnl) }}</td>
           <td>{{ data.base_currency_symbol }}{{ "{:,.2f}".format(row.deposit_sum) }}</td>
@@ -291,6 +296,7 @@
           <th>BE Rate</th>
           <th>Return M1</th>
           <th>Return M2</th>
+          <th>Realized Return</th>
           <th>MDD</th>
           <th>Realized PnL</th>
           <th>Deposit</th>
@@ -309,6 +315,7 @@
           <td>{{ "%.2f"|format(row.be_rate_pct) if row.be_rate_pct is not none else "N/A" }}%</td>
           <td>{{ "%.2f"|format(row.return_method1_pct) if row.return_method1_pct is not none else "N/A" }}%</td>
           <td>{{ "%.2f"|format(row.return_method2_pct) if row.return_method2_pct is not none else "N/A" }}%</td>
+          <td>{{ "%.2f"|format(row.realized_return_pct) if row.realized_return_pct is not none else "N/A" }}%</td>
           <td>{{ "%.2f"|format(row.mdd_pct) }}%</td>
           <td>{{ data.base_currency_symbol }}{{ "{:,.2f}".format(row.realized_pnl) }}</td>
           <td>{{ data.base_currency_symbol }}{{ "{:,.2f}".format(row.deposit_sum) }}</td>
@@ -335,6 +342,7 @@
           <th>BE Rate</th>
           <th>Return M1</th>
           <th>Return M2</th>
+          <th>Realized Return</th>
           <th>MDD</th>
           <th>Realized PnL</th>
           <th>Deposit</th>
@@ -353,6 +361,7 @@
           <td>{{ "%.2f"|format(row.be_rate_pct) if row.be_rate_pct is not none else "N/A" }}%</td>
           <td>{{ "%.2f"|format(row.return_method1_pct) if row.return_method1_pct is not none else "N/A" }}%</td>
           <td>{{ "%.2f"|format(row.return_method2_pct) if row.return_method2_pct is not none else "N/A" }}%</td>
+          <td>{{ "%.2f"|format(row.realized_return_pct) if row.realized_return_pct is not none else "N/A" }}%</td>
           <td>{{ "%.2f"|format(row.mdd_pct) }}%</td>
           <td>{{ data.base_currency_symbol }}{{ "{:,.2f}".format(row.realized_pnl) }}</td>
           <td>{{ data.base_currency_symbol }}{{ "{:,.2f}".format(row.deposit_sum) }}</td>
@@ -377,6 +386,7 @@
   const closedTradeReturnPayload = {{ data.closed_trade_returns | tojson }};
   const benchmarkPrefetch = {{ (benchmark_prefetch if benchmark_prefetch is defined else {}) | tojson }};
   const baseCurrencySymbol = {{ data.base_currency_symbol | tojson }};
+  const fxChartQuoteCurrency = {{ (data.fx_chart_quote_currency if data.fx_chart_quote_currency is defined else "KRW") | tojson }};
 
   function safeNum(v) {
     return typeof v === "number" && Number.isFinite(v) ? v : null;
@@ -1131,7 +1141,9 @@
     const currency = fxCurrencySelect.value;
     const days = Number(fxDaysSelect.value || "90");
     try {
-      const res = await fetch(`/api/fx/history?currency=${encodeURIComponent(currency)}&days=${encodeURIComponent(days)}`);
+      const res = await fetch(`/api/fx/history?currency=${encodeURIComponent(currency)}&quote_currency=${encodeURIComponent(fxChartQuoteCurrency)}&days=${encodeURIComponent(days)}`, {
+        credentials: "same-origin",
+      });
       if (!res.ok) {
         let msg = `${res.status}`;
         try {
@@ -1139,6 +1151,10 @@
           msg = body.detail || msg;
         } catch (_) {}
         throw new Error(msg);
+      }
+      const contentType = String(res.headers.get("content-type") || "").toLowerCase();
+      if (!contentType.includes("application/json")) {
+        throw new Error("invalid response type");
       }
       const payload = await res.json();
       renderFxChart(payload);

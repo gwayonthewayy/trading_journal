@@ -2066,6 +2066,7 @@ def _build_event_timeline(session: Session) -> list[dict[str, Any]]:
         cashflow_delta = 0.0
         trade_count_delta = 0
         realized_pnl_delta = 0.0
+        realized_cost_basis_delta = 0.0
         sell_count_delta = 0
         sell_non_be_count_delta = 0
         sell_be_count_delta = 0
@@ -2116,6 +2117,10 @@ def _build_event_timeline(session: Session) -> list[dict[str, Any]]:
                     lot_state = lot_states.get(alloc.lot_id)
                     if lot_state is None:
                         continue
+                    realized_cost_basis_delta += _to_base(
+                        (lot_state.get("entry_price", 0.0) or 0.0) * alloc.qty_sold,
+                        lot_state.get("fx_rate_to_base", 1.0) or 1.0,
+                    )
                     lot_state["qty_open"] = max(0.0, lot_state["qty_open"] - alloc.qty_sold)
 
         elif event.type == EventType.SL_UPDATE:
@@ -2135,6 +2140,7 @@ def _build_event_timeline(session: Session) -> list[dict[str, Any]]:
                 "cashflow_delta": cashflow_delta,
                 "trade_count_delta": trade_count_delta,
                 "realized_pnl_delta": realized_pnl_delta,
+                "realized_cost_basis_delta": realized_cost_basis_delta,
                 "sell_count_delta": sell_count_delta,
                 "sell_non_be_count_delta": sell_non_be_count_delta,
                 "sell_be_count_delta": sell_be_count_delta,
@@ -2224,6 +2230,7 @@ def _build_period_stats(timeline: list[dict[str, Any]], granularity: str) -> lis
                 "weighted_deposit_sum": 0.0,
                 "weighted_withdraw_sum": 0.0,
                 "realized_pnl": 0.0,
+                "realized_cost_basis": 0.0,
                 "asset_start": point["asset_before"],
                 "asset_end": point["asset_after"],
                 "equity_curve": [point["asset_before"], point["asset_after"]],
@@ -2240,6 +2247,7 @@ def _build_period_stats(timeline: list[dict[str, Any]], granularity: str) -> lis
         row["sell_win_count"] += point["sell_win_count_delta"]
         row["net_cashflow"] += point["cashflow_delta"]
         row["realized_pnl"] += point["realized_pnl_delta"]
+        row["realized_cost_basis"] += point.get("realized_cost_basis_delta", 0.0)
 
         cashflow_delta = point["cashflow_delta"]
         if cashflow_delta != 0:
@@ -2282,6 +2290,11 @@ def _build_period_stats(timeline: list[dict[str, Any]], granularity: str) -> lis
         win_rate_pct = (row["sell_win_count"] / sell_non_be_count * 100) if sell_non_be_count > 0 else None
         be_rate_pct = (sell_be_count / sell_count * 100) if sell_count > 0 else None
         avg_realized_pnl = (row["realized_pnl"] / sell_count) if sell_count > 0 else None
+        realized_return_pct = (
+            (row["realized_pnl"] / row["realized_cost_basis"] * 100)
+            if abs(row["realized_cost_basis"]) > 1e-12
+            else None
+        )
 
         stats.append(
             {
@@ -2298,7 +2311,9 @@ def _build_period_stats(timeline: list[dict[str, Any]], granularity: str) -> lis
                 "mdd_pct": _calc_mdd_pct(row["equity_curve"]),
                 "return_method1_pct": return_method1_pct,
                 "return_method2_pct": return_method2_pct,
+                "realized_return_pct": realized_return_pct,
                 "realized_pnl": row["realized_pnl"],
+                "realized_cost_basis": row["realized_cost_basis"],
                 "avg_realized_pnl_per_sell": avg_realized_pnl,
                 "net_cashflow": row["net_cashflow"],
                 "deposit_sum": row["deposit_sum"],
@@ -2424,6 +2439,12 @@ def build_stats(session: Session) -> dict[str, Any]:
         normalized = _normalize_upper_optional(value)
         if normalized:
             used_currencies.add(normalized)
+    fx_chart_quote_currency = "KRW"
+    fx_chart_currencies = [cur for cur in used_currencies if cur != fx_chart_quote_currency]
+    fx_priority = {"USD": 0, "HKD": 1, "JPY": 2, "EUR": 3}
+    fx_chart_currencies.sort(key=lambda cur: (fx_priority.get(cur, 99), cur))
+    if not fx_chart_currencies:
+        fx_chart_currencies = ["USD"]
     daily = _build_period_stats(timeline, "daily")
     weekly = _build_period_stats(timeline, "weekly")
     monthly = _build_period_stats(timeline, "monthly")
@@ -2433,6 +2454,8 @@ def build_stats(session: Session) -> dict[str, Any]:
         "base_currency": base_currency,
         "base_currency_symbol": _currency_symbol(base_currency),
         "currencies": sorted(used_currencies),
+        "fx_chart_quote_currency": fx_chart_quote_currency,
+        "fx_chart_currencies": fx_chart_currencies,
         "benchmark_symbols": list(BENCHMARK_SYMBOLS),
         "closed_trade_pnls": closed_trade_pnls,
         "closed_trade_returns": closed_trade_returns,
@@ -2443,6 +2466,7 @@ def build_stats(session: Session) -> dict[str, Any]:
             "mdd_pct": "Maximum drawdown (%) on period book-asset curve",
             "return_method1_pct": f"((asset_end - asset_start + withdraw_sum - deposit_sum) / asset_start) * 100; hidden when |asset_start| <= {RETURN_DENOMINATOR_MIN_BASE:.0f} {base_currency}",
             "return_method2_pct": f"((asset_end - asset_start + withdraw_sum - deposit_sum) / (asset_start + weighted_deposit_sum - weighted_withdraw_sum)) * 100; hidden when denominator <= {RETURN_DENOMINATOR_MIN_BASE:.0f} {base_currency}",
+            "realized_return_pct": "Period realized return on closed trades: realized_pnl / realized_cost_basis * 100",
             "closed_trade_return_pct": "Per closed SELL: realized_pnl / allocated cost basis * 100",
         },
         "current": {
@@ -2753,8 +2777,114 @@ def save_uploaded_image(content: bytes, content_type: str | None) -> str:
     return f"/uploads/{rel_dir.as_posix()}/{filename}"
 
 
-def build_fx_history(session: Session, currency: str, days: int = 90) -> dict[str, Any]:
-    base_currency = _get_base_currency(session)
+def _fetch_fx_history_from_frankfurter_range(
+    from_currency: str,
+    to_currency: str,
+    start_date: date,
+    end_date: date,
+) -> list[dict[str, Any]]:
+    url = (
+        f"https://api.frankfurter.app/{start_date.isoformat()}..{end_date.isoformat()}"
+        f"?from={from_currency}&to={to_currency}"
+    )
+    with urlopen(url, timeout=10) as response:
+        payload = json.loads(response.read().decode("utf-8"))
+
+    rates = payload.get("rates") if isinstance(payload, dict) else None
+    if not isinstance(rates, dict):
+        raise ValueError("invalid FX history response")
+
+    rows: list[dict[str, Any]] = []
+    for day_str in sorted(rates.keys()):
+        day_rates = rates.get(day_str)
+        if not isinstance(day_rates, dict):
+            continue
+        value = day_rates.get(to_currency)
+        try:
+            rate = float(value)
+        except (TypeError, ValueError):
+            continue
+        if not math.isfinite(rate) or rate <= 0:
+            continue
+        rows.append({"date": day_str, "rate": rate})
+    return rows
+
+
+def _fetch_fx_history_from_yahoo_chart(
+    from_currency: str,
+    to_currency: str,
+    start_date: date,
+    end_date: date,
+) -> list[dict[str, Any]]:
+    symbol = f"{from_currency}{to_currency}=X"
+    period1 = int(datetime.combine(start_date, time.min).timestamp())
+    period2 = int(datetime.combine(end_date + timedelta(days=1), time.min).timestamp())
+    url = (
+        "https://query1.finance.yahoo.com/v8/finance/chart/"
+        f"{quote(symbol)}?interval=1d&period1={period1}&period2={period2}&events=history&includeAdjustedClose=true"
+    )
+    req = Request(url, headers={"User-Agent": "Mozilla/5.0"})
+
+    with urlopen(req, timeout=12) as response:
+        payload = json.loads(response.read().decode("utf-8"))
+
+    chart = payload.get("chart") if isinstance(payload, dict) else None
+    results = chart.get("result") if isinstance(chart, dict) else None
+    if not isinstance(results, list) or not results:
+        raise ValueError("invalid FX history response")
+
+    result = results[0] if isinstance(results[0], dict) else {}
+    timestamps = result.get("timestamp") if isinstance(result, dict) else None
+    indicators = result.get("indicators") if isinstance(result, dict) else None
+    quotes = indicators.get("quote") if isinstance(indicators, dict) else None
+    quote0 = quotes[0] if isinstance(quotes, list) and quotes else {}
+    closes = quote0.get("close") if isinstance(quote0, dict) else None
+
+    if not isinstance(timestamps, list) or not isinstance(closes, list):
+        raise ValueError("invalid FX history response")
+
+    rows: list[dict[str, Any]] = []
+    for ts_value, close_value in zip(timestamps, closes):
+        try:
+            ts_int = int(ts_value)
+            rate = float(close_value)
+        except (TypeError, ValueError):
+            continue
+        if not math.isfinite(rate) or rate <= 0:
+            continue
+        rows.append({"date": datetime.utcfromtimestamp(ts_int).date().isoformat(), "rate": rate})
+
+    rows.sort(key=lambda x: x["date"])
+    return rows
+
+
+def _fetch_fx_history_by_daily_lookup(
+    from_currency: str,
+    to_currency: str,
+    start_date: date,
+    end_date: date,
+) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    current = start_date
+    while current <= end_date:
+        try:
+            rate = _fetch_fx_rate_from_api(from_currency, to_currency, current)
+        except Exception:
+            current += timedelta(days=1)
+            continue
+        if math.isfinite(rate) and rate > 0:
+            rows.append({"date": current.isoformat(), "rate": float(rate)})
+        current += timedelta(days=1)
+    return rows
+
+
+def build_fx_history(
+    session: Session,
+    currency: str,
+    days: int = 90,
+    quote_currency: str | None = None,
+) -> dict[str, Any]:
+    base_currency = _normalize_upper_optional(quote_currency) or _get_base_currency(session)
     normalized_currency = _normalize_upper_optional(currency)
     if not normalized_currency:
         raise HTTPException(status_code=400, detail="currency is required")
@@ -2776,33 +2906,25 @@ def build_fx_history(session: Session, currency: str, days: int = 90) -> dict[st
             "rows": rows,
         }
 
-    url = (
-        f"https://api.frankfurter.app/{start_date.isoformat()}..{end_date.isoformat()}"
-        f"?from={normalized_currency}&to={base_currency}"
-    )
-    try:
-        with urlopen(url, timeout=10) as response:
-            payload = json.loads(response.read().decode("utf-8"))
-    except (URLError, TimeoutError, ValueError) as exc:
-        raise HTTPException(status_code=502, detail="failed to fetch FX history from provider") from exc
-
-    rates = payload.get("rates") if isinstance(payload, dict) else None
-    if not isinstance(rates, dict):
-        raise HTTPException(status_code=502, detail="invalid FX history response")
-
     rows: list[dict[str, Any]] = []
-    for day_str in sorted(rates.keys()):
-        day_rates = rates.get(day_str)
-        if not isinstance(day_rates, dict):
-            continue
-        value = day_rates.get(base_currency)
+    errors: list[str] = []
+    providers = [
+        ("frankfurter-range", _fetch_fx_history_from_frankfurter_range),
+        ("yahoo-chart", _fetch_fx_history_from_yahoo_chart),
+        ("daily-fallback", _fetch_fx_history_by_daily_lookup),
+    ]
+    for provider_name, provider in providers:
         try:
-            rate = float(value)
-        except (TypeError, ValueError):
+            rows = provider(normalized_currency, base_currency, start_date, end_date)
+        except Exception as exc:
+            errors.append(f"{provider_name}:{exc}")
+            rows = []
             continue
-        if not math.isfinite(rate) or rate <= 0:
-            continue
-        rows.append({"date": day_str, "rate": rate})
+        if rows:
+            break
+
+    if not rows:
+        raise HTTPException(status_code=502, detail="failed to fetch FX history from provider")
 
     return {
         "currency": normalized_currency,

@@ -79,8 +79,14 @@ def _journal_page_url(
     event_type: str | None,
     date_from: date | None,
     date_to: date | None,
+    hf_ticker: list[str] | None = None,
+    hf_market: list[str] | None = None,
+    hf_currency: list[str] | None = None,
+    hf_symbol_name: list[str] | None = None,
+    hf_type: list[str] | None = None,
+    hf_win_lose: list[str] | None = None,
 ) -> str:
-    params: dict[str, str | int] = {"page": page}
+    params: dict[str, str | int | list[str]] = {"page": page}
     if q:
         params["q"] = q
     if event_type:
@@ -89,7 +95,19 @@ def _journal_page_url(
         params["date_from"] = date_from.isoformat()
     if date_to:
         params["date_to"] = date_to.isoformat()
-    return f"/journal?{urlencode(params)}"
+    if hf_ticker:
+        params["hf_ticker"] = hf_ticker
+    if hf_market:
+        params["hf_market"] = hf_market
+    if hf_currency:
+        params["hf_currency"] = hf_currency
+    if hf_symbol_name:
+        params["hf_symbol_name"] = hf_symbol_name
+    if hf_type:
+        params["hf_type"] = hf_type
+    if hf_win_lose:
+        params["hf_win_lose"] = hf_win_lose
+    return f"/journal?{urlencode(params, doseq=True)}"
 
 
 def _template_auth_context(request: Request) -> dict[str, str | bool | None]:
@@ -351,6 +369,12 @@ def api_journal(
     event_type: str | None = Query(default=None),
     date_from: date | None = Query(default=None),
     date_to: date | None = Query(default=None),
+    hf_ticker: list[str] = Query(default=[]),
+    hf_market: list[str] = Query(default=[]),
+    hf_currency: list[str] = Query(default=[]),
+    hf_symbol_name: list[str] = Query(default=[]),
+    hf_type: list[str] = Query(default=[]),
+    hf_win_lose: list[str] = Query(default=[]),
     _auth: str = Depends(viewer_api_guard),
     session: Session = Depends(get_session),
 ) -> dict:
@@ -362,6 +386,12 @@ def api_journal(
         event_type=event_type,
         date_from=date_from,
         date_to=date_to,
+        hf_ticker=hf_ticker,
+        hf_market=hf_market,
+        hf_currency=hf_currency,
+        hf_symbol_name=hf_symbol_name,
+        hf_type=hf_type,
+        hf_win_lose=hf_win_lose,
     )
 
 
@@ -410,6 +440,12 @@ def page_journal(
     event_type: str | None = Query(default=None),
     date_from: date | None = Query(default=None),
     date_to: date | None = Query(default=None),
+    hf_ticker: list[str] = Query(default=[]),
+    hf_market: list[str] = Query(default=[]),
+    hf_currency: list[str] = Query(default=[]),
+    hf_symbol_name: list[str] = Query(default=[]),
+    hf_type: list[str] = Query(default=[]),
+    hf_win_lose: list[str] = Query(default=[]),
     session: Session = Depends(get_session),
 ) -> HTMLResponse:
     role = _require_viewer_page_role(request)
@@ -424,21 +460,63 @@ def page_journal(
         event_type=event_type,
         date_from=date_from,
         date_to=date_to,
+        hf_ticker=hf_ticker,
+        hf_market=hf_market,
+        hf_currency=hf_currency,
+        hf_symbol_name=hf_symbol_name,
+        hf_type=hf_type,
+        hf_win_lose=hf_win_lose,
     )
     data["page_urls"] = [
         {
             "page": p,
-            "url": _journal_page_url(p, q, event_type, date_from, date_to),
+            "url": _journal_page_url(
+                p,
+                q,
+                event_type,
+                date_from,
+                date_to,
+                hf_ticker=hf_ticker,
+                hf_market=hf_market,
+                hf_currency=hf_currency,
+                hf_symbol_name=hf_symbol_name,
+                hf_type=hf_type,
+                hf_win_lose=hf_win_lose,
+            ),
         }
         for p in data["page_numbers"]
     ]
     data["prev_url"] = (
-        _journal_page_url(data["prev_page"], q, event_type, date_from, date_to)
+        _journal_page_url(
+            data["prev_page"],
+            q,
+            event_type,
+            date_from,
+            date_to,
+            hf_ticker=hf_ticker,
+            hf_market=hf_market,
+            hf_currency=hf_currency,
+            hf_symbol_name=hf_symbol_name,
+            hf_type=hf_type,
+            hf_win_lose=hf_win_lose,
+        )
         if data["has_prev"] and data["prev_page"] is not None
         else None
     )
     data["next_url"] = (
-        _journal_page_url(data["next_page"], q, event_type, date_from, date_to)
+        _journal_page_url(
+            data["next_page"],
+            q,
+            event_type,
+            date_from,
+            date_to,
+            hf_ticker=hf_ticker,
+            hf_market=hf_market,
+            hf_currency=hf_currency,
+            hf_symbol_name=hf_symbol_name,
+            hf_type=hf_type,
+            hf_win_lose=hf_win_lose,
+        )
         if data["has_next"] and data["next_page"] is not None
         else None
     )
@@ -478,11 +556,37 @@ def page_stats(request: Request, session: Session = Depends(get_session)) -> HTM
         return RedirectResponse(url="/access", status_code=303)
 
     data = build_stats(session)
+    benchmark_prefetch: dict[str, dict] = {}
+    for symbol in data.get("benchmark_symbols", []):
+        try:
+            benchmark_prefetch[symbol] = build_benchmark_returns(session, symbol, stats=data)
+        except HTTPException as exc:
+            benchmark_prefetch[symbol] = {
+                "symbol": symbol,
+                "source_symbol": symbol,
+                "daily": [],
+                "weekly": [],
+                "monthly": [],
+                "yearly": [],
+                "error": str(exc.detail),
+            }
+        except Exception as exc:
+            benchmark_prefetch[symbol] = {
+                "symbol": symbol,
+                "source_symbol": symbol,
+                "daily": [],
+                "weekly": [],
+                "monthly": [],
+                "yearly": [],
+                "error": str(exc),
+            }
+
     return templates.TemplateResponse(
         "stats.html",
         {
             "request": request,
             "data": data,
+            "benchmark_prefetch": benchmark_prefetch,
             **_template_auth_context(request),
         },
     )

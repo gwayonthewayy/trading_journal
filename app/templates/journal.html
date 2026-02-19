@@ -1,12 +1,28 @@
-﻿{% extends "base.html" %}
+{% extends "base.html" %}
 {% block page_header %}
 <section class="page-head">
   <h1>Trading Journal</h1>
   <p>매매 기록, 실행 이벤트, 리뷰를 한 화면에서 관리합니다.</p>
   <div class="pill-row">
-    <span class="pill">Events {{ data.events|length }}</span>
-    <span class="pill">Book Asset {{ "%.2f"|format(data.book_asset) }} {{ data.base_currency }}</span>
-    <span class="pill">Cash {{ "%.2f"|format(data.cash_balance) }} {{ data.base_currency }}</span>
+    <span class="pill">Event Count (excl. SL_UPDATE) {{ data.event_count_ex_sl_update }}</span>
+    <span class="pill">
+      Open Pos (MTM)
+      {{ data.usd_currency_symbol }}{{ "{:,.2f}".format(data.open_position_mtm_dual.usd) if data.open_position_mtm_dual.usd is not none else "N/A" }}
+      /
+      {{ data.krw_currency_symbol }}{{ "{:,.0f}".format(data.open_position_mtm_dual.krw) if data.open_position_mtm_dual.krw is not none else "N/A" }}
+    </span>
+    <span class="pill">
+      Open Pos (Cost)
+      {{ data.usd_currency_symbol }}{{ "{:,.2f}".format(data.open_position_cost_dual.usd) if data.open_position_cost_dual.usd is not none else "N/A" }}
+      /
+      {{ data.krw_currency_symbol }}{{ "{:,.0f}".format(data.open_position_cost_dual.krw) if data.open_position_cost_dual.krw is not none else "N/A" }}
+    </span>
+    <span class="pill">
+      Cash (Deposit)
+      {{ data.usd_currency_symbol }}{{ "{:,.2f}".format(data.cash_balance_dual.usd) if data.cash_balance_dual.usd is not none else "N/A" }}
+      /
+      {{ data.krw_currency_symbol }}{{ "{:,.0f}".format(data.cash_balance_dual.krw) if data.cash_balance_dual.krw is not none else "N/A" }}
+    </span>
   </div>
 </section>
 {% endblock %}
@@ -14,19 +30,39 @@
 {% block content %}
 <section class="metrics">
   <div class="metric">
-    <div class="label">Book Asset ({{ data.base_currency }})</div>
-    <div class="value">{{ "%.2f"|format(data.book_asset) }}</div>
-    <div class="hint">현재 기준 총 장부자산</div>
+    <div class="label">Open Position Value (MTM, {{ data.base_currency }})</div>
+    <div class="value">
+      {{ data.usd_currency_symbol }}{{ "{:,.2f}".format(data.open_position_mtm_dual.usd) if data.open_position_mtm_dual.usd is not none else "N/A" }}
+    </div>
+    <div class="hint">
+      {{ data.krw_currency_symbol }}{{ "{:,.0f}".format(data.open_position_mtm_dual.krw) if data.open_position_mtm_dual.krw is not none else "N/A" }}
+    </div>
+    <div class="hint">보유 포지션 현재가 합계</div>
   </div>
   <div class="metric">
-    <div class="label">Cash Balance ({{ data.base_currency }})</div>
-    <div class="value">{{ "%.2f"|format(data.cash_balance) }}</div>
-    <div class="hint">입출금과 체결 반영 현금</div>
+    <div class="label">Open Position Value (Cost, {{ data.base_currency }})</div>
+    <div class="value">
+      {{ data.usd_currency_symbol }}{{ "{:,.2f}".format(data.open_position_cost_dual.usd) if data.open_position_cost_dual.usd is not none else "N/A" }}
+    </div>
+    <div class="hint">
+      {{ data.krw_currency_symbol }}{{ "{:,.0f}".format(data.open_position_cost_dual.krw) if data.open_position_cost_dual.krw is not none else "N/A" }}
+    </div>
+    <div class="hint">보유 포지션 원가 합계</div>
+  </div>
+  <div class="metric">
+    <div class="label">Cash Balance (Deposit Only)</div>
+    <div class="value">
+      {{ data.usd_currency_symbol }}{{ "{:,.2f}".format(data.cash_balance_dual.usd) if data.cash_balance_dual.usd is not none else "N/A" }}
+    </div>
+    <div class="hint">
+      {{ data.krw_currency_symbol }}{{ "{:,.0f}".format(data.cash_balance_dual.krw) if data.cash_balance_dual.krw is not none else "N/A" }}
+    </div>
+    <div class="hint">입출금(CASHFLOW) 합계 기준 예수금</div>
   </div>
   <div class="metric">
     <div class="label">Event Count</div>
-    <div class="value">{{ data.events|length }}</div>
-    <div class="hint">최근 300개 이벤트</div>
+    <div class="value">{{ data.event_count_ex_sl_update }}</div>
+    <div class="hint">현재 필터 기준 (SL_UPDATE 제외)</div>
   </div>
 </section>
 
@@ -147,7 +183,7 @@
           <option value="">Select Lot</option>
           {% for row in portfolio.rows %}
             {% for lot in row.lots %}
-              <option value="{{ lot.lot_id }}">{{ row.ticker }} lot#{{ lot.lot_id }} (open {{ "%.4f"|format(lot.qty_open) }}, SL {{ lot.sl if lot.sl is not none else "None" }})</option>
+              <option value="{{ lot.lot_id }}">{{ row.ticker }} lot#{{ lot.lot_id }} (open {{ "{:,.4f}".format(lot.qty_open) }}, SL {{ lot.sl_display or "None" }})</option>
             {% endfor %}
           {% endfor %}
         </select>
@@ -213,6 +249,7 @@
     </form>
   </div>
   <div id="journal-filter-error" class="error"></div>
+
   <div id="active-filter-badges" class="pill-row">
     {% if data.filters.q or data.filters.event_type or data.filters.date_from or data.filters.date_to %}
       <span class="pill">Active filters</span>
@@ -289,11 +326,42 @@
       <thead>
         <tr>
           <th>TS</th>
-          <th>Ticker</th>
-          <th>Market</th>
-          <th>Currency</th>
-          <th>Name</th>
-          <th>Type</th>
+          <th class="th-filterable" data-table-filter-key="ticker" data-table-filter-label="Ticker">
+            <span class="th-filter-head">
+              <span class="th-filter-title">Ticker</span>
+              <button type="button" class="th-filter-btn" aria-label="Filter Ticker" title="Filter Ticker">▾</button>
+            </span>
+          </th>
+          <th class="th-filterable" data-table-filter-key="market" data-table-filter-label="Market">
+            <span class="th-filter-head">
+              <span class="th-filter-title">Market</span>
+              <button type="button" class="th-filter-btn" aria-label="Filter Market" title="Filter Market">▾</button>
+            </span>
+          </th>
+          <th class="th-filterable" data-table-filter-key="currency" data-table-filter-label="Currency">
+            <span class="th-filter-head">
+              <span class="th-filter-title">Currency</span>
+              <button type="button" class="th-filter-btn" aria-label="Filter Currency" title="Filter Currency">▾</button>
+            </span>
+          </th>
+          <th class="th-filterable" data-table-filter-key="symbol_name" data-table-filter-label="Name">
+            <span class="th-filter-head">
+              <span class="th-filter-title">Name</span>
+              <button type="button" class="th-filter-btn" aria-label="Filter Name" title="Filter Name">▾</button>
+            </span>
+          </th>
+          <th class="th-filterable" data-table-filter-key="type" data-table-filter-label="Type">
+            <span class="th-filter-head">
+              <span class="th-filter-title">Type</span>
+              <button type="button" class="th-filter-btn" aria-label="Filter Type" title="Filter Type">▾</button>
+            </span>
+          </th>
+          <th class="th-filterable" data-table-filter-key="win_lose" data-table-filter-label="W/L">
+            <span class="th-filter-head">
+              <span class="th-filter-title">W/L</span>
+              <button type="button" class="th-filter-btn" aria-label="Filter W/L" title="Filter W/L">▾</button>
+            </span>
+          </th>
           <th>Qty</th>
           <th>Price</th>
           <th>SL/TP</th>
@@ -302,7 +370,6 @@
           <th>Realized PnL</th>
           <th>Realized PnL (Local)</th>
           <th>Open Risk</th>
-          <th>Book Asset</th>
           <th class="col-reason-note">Reason / Note</th>
           <th>Review</th>
           <th>Image</th>
@@ -319,6 +386,7 @@
           data-event-ticker="{{ e.ticker or '' }}"
           data-event-market="{{ e.market or '' }}"
           data-event-currency="{{ e.currency or '' }}"
+          data-event-symbol-name="{{ e.symbol_name or '' }}"
           data-event-fx-rate="{{ e.fx_rate_to_base if e.fx_rate_to_base is not none else '' }}"
           data-event-ts="{{ e.ts.isoformat() if e.ts else '' }}"
           data-event-qty="{{ e.qty if e.qty is not none else '' }}"
@@ -327,6 +395,7 @@
           data-event-sl="{{ e.sl if e.sl is not none else '' }}"
           data-event-tp="{{ e.tp if e.tp is not none else '' }}"
           data-event-cash="{{ e.amount if e.type == 'CASHFLOW' and e.amount is not none else '' }}"
+          data-event-win-lose="{{ e.win_lose or '' }}"
           data-event-reason="{{ e.reason or '' }}"
           data-event-note="{{ e.note or '' }}"
           data-event-image-url="{{ e.image_url or '' }}"
@@ -341,28 +410,34 @@
             {% set type_class = e.type|lower|replace("_", "-") %}
             <span class="badge badge-{{ type_class }}">{{ e.type }}</span>
           </td>
-          <td>{{ e.qty if e.qty is not none else "" }}</td>
-          <td>{{ e.price if e.price is not none else "" }}</td>
-          <td>{{ e.sl if e.sl is not none else "" }} / {{ e.tp if e.tp is not none else "" }}</td>
-          <td>{{ "%.2f"|format(e.amount) if e.amount is not none else "" }}</td>
-          <td>{{ "%.2f"|format(e.unrealized_pnl) if e.unrealized_pnl is not none else "" }}</td>
-          <td>{{ "%.2f"|format(e.realized_pnl) if e.realized_pnl is not none else "" }}</td>
-          <td>{{ "%.2f"|format(e.realized_pnl_local) if e.realized_pnl_local is not none else "" }}</td>
           <td>
-            <div>{{ "%.2f"|format(e.open_risk) }}</div>
+            {% if e.win_lose == "W" %}
+            <span class="wl-win">W</span>
+            {% elif e.win_lose == "L" %}
+            <span class="wl-lose">L</span>
+            {% endif %}
+          </td>
+          <td>{{ "{:,.4f}".format(e.qty) if e.qty is not none else "" }}</td>
+          <td>{{ e.currency_symbol }}{{ e.price_display if e.price is not none else "" }}</td>
+          <td>{{ e.sl_display if e.sl is not none else "" }} / {{ e.tp_display if e.tp is not none else "" }}</td>
+          <td>{{ data.base_currency_symbol }}{{ "{:,.2f}".format(e.amount) if e.amount is not none else "" }}</td>
+          <td>{{ data.base_currency_symbol }}{{ "{:,.2f}".format(e.unrealized_pnl) if e.unrealized_pnl is not none else "" }}</td>
+          <td>{{ data.base_currency_symbol }}{{ "{:,.2f}".format(e.realized_pnl) if e.realized_pnl is not none else "" }}</td>
+          <td>{{ data.krw_currency_symbol }}{{ "{:,.0f}".format(e.realized_pnl_local) if e.realized_pnl_local is not none else "" }}</td>
+          <td>
+            <div>{{ data.base_currency_symbol }}{{ "{:,.2f}".format(e.open_risk) }}</div>
             {% set delta = e.open_risk_delta if e.open_risk_delta is not none else 0 %}
             {% if delta > 0 %}
-            <div class="chip-bad">? {{ "%+.2f"|format(delta) }}</div>
+            <div class="chip-bad">{{ data.base_currency_symbol }}{{ "{:+,.2f}".format(delta) }}</div>
             {% elif delta < 0 %}
-            <div class="chip-ok">? {{ "%+.2f"|format(delta) }}</div>
+            <div class="chip-ok">{{ data.base_currency_symbol }}{{ "{:+,.2f}".format(delta) }}</div>
             {% else %}
-            <div class="chip-neutral">? {{ "%+.2f"|format(delta) }}</div>
+            <div class="chip-neutral">{{ data.base_currency_symbol }}{{ "{:+,.2f}".format(delta) }}</div>
             {% endif %}
             {% if e.open_risk_delta_details %}
             <div class="small">{{ e.open_risk_delta_details }}</div>
             {% endif %}
           </td>
-          <td>{{ "%.2f"|format(e.book_asset) }}</td>
           <td class="col-reason-note">
             <div>{{ e.reason or "" }}</div>
             <div class="small">{{ e.note or "" }}</div>
@@ -404,9 +479,9 @@
         <div><span class="small">Ticker</span><div>{{ e.ticker or "-" }}</div></div>
         <div><span class="small">Market</span><div>{{ e.market or "" }}</div></div>
         <div><span class="small">Currency</span><div>{{ e.currency or "" }}</div></div>
-        <div><span class="small">Qty/Price</span><div>{{ e.qty if e.qty is not none else "" }} / {{ e.price if e.price is not none else "" }}</div></div>
-        <div><span class="small">Unrealized PnL</span><div>{{ "%.2f"|format(e.unrealized_pnl) if e.unrealized_pnl is not none else "" }}</div></div>
-        <div><span class="small">Realized PnL</span><div>{{ "%.2f"|format(e.realized_pnl) if e.realized_pnl is not none else "" }}</div></div>
+        <div><span class="small">Qty/Price</span><div>{{ "{:,.4f}".format(e.qty) if e.qty is not none else "" }} / {{ e.currency_symbol }}{{ e.price_display if e.price is not none else "" }}</div></div>
+        <div><span class="small">Unrealized PnL</span><div>{{ data.base_currency_symbol }}{{ "{:,.2f}".format(e.unrealized_pnl) if e.unrealized_pnl is not none else "" }}</div></div>
+        <div><span class="small">Realized PnL</span><div>{{ data.base_currency_symbol }}{{ "{:,.2f}".format(e.realized_pnl) if e.realized_pnl is not none else "" }}</div></div>
         <div><span class="small">Reason</span><div>{{ e.reason or "" }}</div></div>
       </div>
       {% if e.image_url %}
@@ -439,6 +514,8 @@
 
 <script>
   const canWrite = {{ "true" if can_write else "false" }};
+  const baseCurrencySymbol = {{ data.base_currency_symbol | tojson }};
+  const krwCurrencySymbol = {{ data.krw_currency_symbol | tojson }};
 
   function parsePayload(form, numericFields) {
     const fd = new FormData(form);
@@ -666,7 +743,14 @@
     "event_type": data.filters.event_type,
     "date_from": data.filters.date_from,
     "date_to": data.filters.date_to,
+    "hf_ticker": data.header_filters.ticker,
+    "hf_market": data.header_filters.market,
+    "hf_currency": data.header_filters.currency,
+    "hf_symbol_name": data.header_filters.symbol_name,
+    "hf_type": data.header_filters.type,
+    "hf_win_lose": data.header_filters.win_lose,
   } | tojson }};
+  let journalHeaderFilterOptions = {{ data.filter_options | tojson }};
   function escapeHtml(value) {
     return String(value ?? "")
       .replace(/&/g, "&amp;")
@@ -676,22 +760,263 @@
       .replace(/'/g, "&#39;");
   }
 
+  const tableFilterBlankToken = "__BLANK__";
+  const journalHeaderFilterDefs = [
+    { key: "ticker", stateKey: "hf_ticker" },
+    { key: "market", stateKey: "hf_market" },
+    { key: "currency", stateKey: "hf_currency" },
+    { key: "symbol_name", stateKey: "hf_symbol_name" },
+    { key: "type", stateKey: "hf_type" },
+    { key: "win_lose", stateKey: "hf_win_lose" },
+  ];
+  const journalHeaderPopup = document.createElement("div");
+  journalHeaderPopup.className = "th-filter-menu th-filter-popup";
+  journalHeaderPopup.hidden = true;
+  document.body.appendChild(journalHeaderPopup);
+  let openJournalHeaderMenu = null;
+  let journalHeaderAnchor = null;
+
+  function normalizeTableFilterValue(value) {
+    const text = String(value || "").trim();
+    return text === "" ? tableFilterBlankToken : text;
+  }
+
+  function tableFilterLabel(value) {
+    return value === tableFilterBlankToken ? "(blank)" : value;
+  }
+
+  function getJournalFilterDef(key) {
+    return journalHeaderFilterDefs.find((def) => def.key === key) || null;
+  }
+
+  function getJournalFilterOptions(key) {
+    const valuesRaw = journalHeaderFilterOptions && Array.isArray(journalHeaderFilterOptions[key])
+      ? journalHeaderFilterOptions[key]
+      : [];
+    const values = new Set(valuesRaw.map((value) => normalizeTableFilterValue(value)));
+    return Array.from(values).sort((a, b) =>
+      tableFilterLabel(a).localeCompare(tableFilterLabel(b), "ko", { numeric: true, sensitivity: "base" }),
+    );
+  }
+
+  function getJournalSelectedValues(key) {
+    const def = getJournalFilterDef(key);
+    if (!def) return [];
+    const raw = Array.isArray(journalState[def.stateKey]) ? journalState[def.stateKey] : [];
+    return raw.map((value) => String(value));
+  }
+
+  function setJournalSelectedValues(key, values) {
+    const def = getJournalFilterDef(key);
+    if (!def) return;
+    journalState[def.stateKey] = Array.from(values);
+  }
+
+  function closeJournalHeaderMenus() {
+    journalHeaderPopup.hidden = true;
+    journalHeaderPopup.innerHTML = "";
+    openJournalHeaderMenu = null;
+    journalHeaderAnchor = null;
+  }
+
+  function positionJournalHeaderPopup(anchor) {
+    if (!anchor) return;
+    const margin = 8;
+    const rect = anchor.getBoundingClientRect();
+    const popup = journalHeaderPopup;
+    let left = rect.left;
+    let top = rect.bottom + 6;
+    const popupRect = popup.getBoundingClientRect();
+    if (left + popupRect.width > window.innerWidth - margin) {
+      left = window.innerWidth - margin - popupRect.width;
+    }
+    if (left < margin) left = margin;
+    if (top + popupRect.height > window.innerHeight - margin) {
+      top = rect.top - popupRect.height - 6;
+    }
+    if (top < margin) top = margin;
+    popup.style.left = `${left}px`;
+    popup.style.top = `${top}px`;
+  }
+
+  function renderJournalHeaderFilterMenu(thElem) {
+    const key = thElem.dataset.tableFilterKey;
+    if (!key) return;
+
+    const selected = new Set(getJournalSelectedValues(key));
+    const options = getJournalFilterOptions(key);
+    const label = thElem.dataset.tableFilterLabel || key;
+    const optionsHtml = options.length
+      ? options
+          .map((value) => `
+            <label class="th-filter-option">
+              <span class="th-filter-option-text">${escapeHtml(tableFilterLabel(value))}</span>
+              <input type="checkbox" value="${escapeHtml(value)}" ${selected.has(value) ? "checked" : ""} />
+            </label>
+          `)
+          .join("")
+      : `<div class="th-filter-empty">No values</div>`;
+
+    journalHeaderPopup.innerHTML = `
+      <div class="th-filter-menu-head">
+        <strong class="th-filter-menu-title">${escapeHtml(label)}</strong>
+      </div>
+      <div class="th-filter-menu-actions">
+        <button type="button" class="secondary th-filter-menu-all">All</button>
+        <button type="button" class="secondary th-filter-menu-clear">Clear</button>
+      </div>
+      <div class="th-filter-menu-options">${optionsHtml}</div>
+      <div class="th-filter-menu-foot">
+        <button type="button" class="th-filter-menu-apply">Apply</button>
+      </div>
+    `;
+
+    journalHeaderPopup.querySelector(".th-filter-menu-all")?.addEventListener("click", () => {
+      journalHeaderPopup.querySelectorAll('input[type="checkbox"]').forEach((el) => {
+        el.checked = true;
+      });
+    });
+    journalHeaderPopup.querySelector(".th-filter-menu-clear")?.addEventListener("click", () => {
+      journalHeaderPopup.querySelectorAll('input[type="checkbox"]').forEach((el) => {
+        el.checked = false;
+      });
+    });
+    journalHeaderPopup.querySelector(".th-filter-menu-apply")?.addEventListener("click", async () => {
+      const next = new Set(
+        Array.from(journalHeaderPopup.querySelectorAll('input[type="checkbox"]:checked')).map((el) => String(el.value)),
+      );
+      setJournalSelectedValues(key, next);
+      updateJournalHeaderFilterButtons();
+      closeJournalHeaderMenus();
+      await loadJournalPage(1, true);
+    });
+  }
+
+  function updateJournalHeaderFilterButtons() {
+    document.querySelectorAll("#journal-table th.th-filterable").forEach((thElem) => {
+      const key = thElem.dataset.tableFilterKey;
+      const btn = thElem.querySelector(".th-filter-btn");
+      const selected = key ? getJournalSelectedValues(key) : [];
+      if (btn) {
+        btn.classList.toggle("active", selected.length > 0);
+      }
+    });
+  }
+
+  function applyJournalHeaderFilters() {
+    // Server-side filtered via /api/journal (full dataset scope).
+  }
+
+  function initJournalHeaderFilters() {
+    if (!journalTable) return;
+    document.querySelectorAll("#journal-table th.th-filterable .th-filter-btn").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const thElem = btn.closest("th.th-filterable");
+        const key = thElem?.dataset.tableFilterKey || "";
+        if (!thElem || !key) return;
+        const reopening = !journalHeaderPopup.hidden && openJournalHeaderMenu === key;
+        closeJournalHeaderMenus();
+        if (reopening) return;
+        renderJournalHeaderFilterMenu(thElem);
+        journalHeaderPopup.hidden = false;
+        positionJournalHeaderPopup(btn);
+        openJournalHeaderMenu = key;
+        journalHeaderAnchor = btn;
+      });
+    });
+
+    document.addEventListener("click", (e) => {
+      if (!e.target.closest(".th-filter-popup") && !e.target.closest("#journal-table th.th-filterable .th-filter-btn")) {
+        closeJournalHeaderMenus();
+      }
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") closeJournalHeaderMenus();
+    });
+    window.addEventListener("resize", closeJournalHeaderMenus);
+    window.addEventListener("scroll", () => {
+      if (!journalHeaderPopup.hidden && journalHeaderAnchor) {
+        positionJournalHeaderPopup(journalHeaderAnchor);
+      }
+    }, true);
+
+    updateJournalHeaderFilterButtons();
+  }
+
   function formatTs(ts) {
     if (!ts) return "";
     return String(ts).replace("T", " ");
+  }
+
+  function currencySymbolForCode(code) {
+    const normalized = String(code || "").trim().toUpperCase();
+    if (normalized === "USD") return "$";
+    if (normalized === "KRW") return "₩";
+    if (normalized === "HKD") return "HK$";
+    return normalized ? `${normalized} ` : "";
   }
 
   function formatMaybeNumber(value, digits = 2) {
     if (value === null || value === undefined || value === "") return "";
     const n = Number(value);
     if (!Number.isFinite(n)) return "";
-    return n.toFixed(digits);
+    return new Intl.NumberFormat("en-US", {
+      minimumFractionDigits: digits,
+      maximumFractionDigits: digits,
+    }).format(n);
+  }
+
+  function formatMaybeNumberTrimmed(value, digits = 2) {
+    if (value === null || value === undefined || value === "") return "";
+    const n = Number(value);
+    if (!Number.isFinite(n)) return "";
+    const text = new Intl.NumberFormat("en-US", {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: digits,
+    }).format(n);
+    return text;
+  }
+
+  function formatQty(value) {
+    return formatMaybeNumber(value, 4);
+  }
+
+  function formatPrice(value) {
+    if (value === null || value === undefined || value === "") return "";
+    const n = Number(value);
+    if (!Number.isFinite(n)) return "";
+    const abs = Math.abs(n);
+    if (abs >= 1000) return formatMaybeNumberTrimmed(n, 2);
+    if (abs >= 1) return formatMaybeNumberTrimmed(n, 4);
+    return formatMaybeNumberTrimmed(n, 6);
+  }
+
+  function formatSlTp(value) {
+    if (value === null || value === undefined || value === "") return "";
+    const n = Number(value);
+    if (!Number.isFinite(n)) return "";
+    const abs = Math.abs(n);
+    if (abs >= 1000) {
+      const scaled = n / 1000;
+      const decimals = Math.abs(scaled) >= 100 ? 0 : (Math.abs(scaled) >= 10 ? 1 : 2);
+      return `${formatMaybeNumberTrimmed(scaled, decimals)}K`;
+    }
+    return formatMaybeNumberTrimmed(n, abs >= 1 ? 2 : 4);
+  }
+
+  function formatMoney(value, symbol = "", digits = 2) {
+    const formatted = formatMaybeNumber(value, digits);
+    if (!formatted) return "";
+    return `${symbol}${formatted}`;
   }
 
   function formatSigned(value) {
     const n = Number(value || 0);
     if (!Number.isFinite(n)) return "+0.00";
-    return `${n >= 0 ? "+" : ""}${n.toFixed(2)}`;
+    const absText = formatMaybeNumber(Math.abs(n), 2);
+    return `${n >= 0 ? "+" : "-"}${absText}`;
   }
 
   function typeClass(type) {
@@ -711,6 +1036,7 @@
         data-event-ticker="${escapeHtml(e.ticker || "")}"
         data-event-market="${escapeHtml(e.market || "")}"
         data-event-currency="${escapeHtml(e.currency || "")}"
+        data-event-symbol-name="${escapeHtml(e.symbol_name || "")}"
         data-event-fx-rate="${escapeHtml(e.fx_rate_to_base ?? "")}"
         data-event-ts="${escapeHtml(e.ts || "")}"
         data-event-qty="${escapeHtml(e.qty ?? "")}"
@@ -719,6 +1045,7 @@
         data-event-sl="${escapeHtml(e.sl ?? "")}"
         data-event-tp="${escapeHtml(e.tp ?? "")}"
         data-event-cash="${escapeHtml(cashForDataset)}"
+        data-event-win-lose="${escapeHtml(e.win_lose || "")}"
         data-event-reason="${escapeHtml(e.reason || "")}"
         data-event-note="${escapeHtml(e.note || "")}"
         data-event-image-url="${escapeHtml(e.image_url || "")}"
@@ -730,19 +1057,19 @@
         <td>${escapeHtml(e.currency || "")}</td>
         <td>${escapeHtml(e.symbol_name || "")}</td>
         <td><span class="badge badge-${escapeHtml(typeClass(e.type))}">${escapeHtml(e.type || "")}</span></td>
-        <td>${escapeHtml(e.qty ?? "")}</td>
-        <td>${escapeHtml(e.price ?? "")}</td>
-        <td>${escapeHtml(e.sl ?? "")} / ${escapeHtml(e.tp ?? "")}</td>
-        <td>${escapeHtml(formatMaybeNumber(e.amount, 2))}</td>
-        <td>${escapeHtml(formatMaybeNumber(e.unrealized_pnl, 2))}</td>
-        <td>${escapeHtml(formatMaybeNumber(e.realized_pnl, 2))}</td>
-        <td>${escapeHtml(formatMaybeNumber(e.realized_pnl_local, 2))}</td>
+        <td>${e.win_lose === "W" ? '<span class="wl-win">W</span>' : e.win_lose === "L" ? '<span class="wl-lose">L</span>' : ""}</td>
+        <td>${escapeHtml(formatQty(e.qty))}</td>
+        <td>${escapeHtml((e.currency_symbol || currencySymbolForCode(e.currency)) + (e.price_display || formatPrice(e.price)))}</td>
+        <td>${escapeHtml((e.sl_display || formatSlTp(e.sl)) + " / " + (e.tp_display || formatSlTp(e.tp)))}</td>
+        <td>${escapeHtml(formatMoney(e.amount, baseCurrencySymbol, 2))}</td>
+        <td>${escapeHtml(formatMoney(e.unrealized_pnl, baseCurrencySymbol, 2))}</td>
+        <td>${escapeHtml(formatMoney(e.realized_pnl, baseCurrencySymbol, 2))}</td>
+        <td>${escapeHtml(formatMoney(e.realized_pnl_local, krwCurrencySymbol, 0))}</td>
         <td>
-          <div>${escapeHtml(formatMaybeNumber(e.open_risk, 2))}</div>
-          <div class="${deltaClass}">? ${escapeHtml(formatSigned(e.open_risk_delta))}</div>
+          <div>${escapeHtml(formatMoney(e.open_risk, baseCurrencySymbol, 2))}</div>
+          <div class="${deltaClass}">${escapeHtml(baseCurrencySymbol)} ${escapeHtml(formatSigned(e.open_risk_delta))}</div>
           ${e.open_risk_delta_details ? `<div class="small">${escapeHtml(e.open_risk_delta_details)}</div>` : ""}
         </td>
-        <td>${escapeHtml(formatMaybeNumber(e.book_asset, 2))}</td>
         <td class="col-reason-note">
           <div>${escapeHtml(e.reason || "")}</div>
           <div class="small">${escapeHtml(e.note || "")}</div>
@@ -776,9 +1103,9 @@
           <div><span class="small">Ticker</span><div>${escapeHtml(e.ticker || "-")}</div></div>
           <div><span class="small">Market</span><div>${escapeHtml(e.market || "")}</div></div>
           <div><span class="small">Currency</span><div>${escapeHtml(e.currency || "")}</div></div>
-          <div><span class="small">Qty/Price</span><div>${escapeHtml(e.qty ?? "")} / ${escapeHtml(e.price ?? "")}</div></div>
-          <div><span class="small">Unrealized PnL</span><div>${escapeHtml(formatMaybeNumber(e.unrealized_pnl, 2))}</div></div>
-          <div><span class="small">Realized PnL</span><div>${escapeHtml(formatMaybeNumber(e.realized_pnl, 2))}</div></div>
+          <div><span class="small">Qty/Price</span><div>${escapeHtml(formatQty(e.qty))} / ${escapeHtml((e.currency_symbol || currencySymbolForCode(e.currency)) + (e.price_display || formatPrice(e.price)))}</div></div>
+          <div><span class="small">Unrealized PnL</span><div>${escapeHtml(formatMoney(e.unrealized_pnl, baseCurrencySymbol, 2))}</div></div>
+          <div><span class="small">Realized PnL</span><div>${escapeHtml(formatMoney(e.realized_pnl, baseCurrencySymbol, 2))}</div></div>
           <div><span class="small">Reason</span><div>${escapeHtml(e.reason || "")}</div></div>
         </div>
         ${e.image_url ? `<div style="margin-top:8px;"><a href="${escapeHtml(e.image_url)}" target="_blank" rel="noreferrer"><img src="${escapeHtml(e.image_url)}" alt="event image" style="max-width:100%; max-height:180px; object-fit:cover; border-radius:8px;" /></a></div>` : ""}
@@ -845,6 +1172,12 @@
     if (state.event_type) params.set("event_type", state.event_type);
     if (state.date_from) params.set("date_from", state.date_from);
     if (state.date_to) params.set("date_to", state.date_to);
+    for (const value of state.hf_ticker || []) params.append("hf_ticker", value);
+    for (const value of state.hf_market || []) params.append("hf_market", value);
+    for (const value of state.hf_currency || []) params.append("hf_currency", value);
+    for (const value of state.hf_symbol_name || []) params.append("hf_symbol_name", value);
+    for (const value of state.hf_type || []) params.append("hf_type", value);
+    for (const value of state.hf_win_lose || []) params.append("hf_win_lose", value);
     return params;
   }
 
@@ -856,6 +1189,18 @@
     try {
       const data = await jsonRequest(`/api/journal?${params.toString()}`, "GET");
       journalState.page = data.page;
+      journalState.page_size = data.page_size;
+      if (data.header_filters) {
+        journalState.hf_ticker = Array.isArray(data.header_filters.ticker) ? data.header_filters.ticker : [];
+        journalState.hf_market = Array.isArray(data.header_filters.market) ? data.header_filters.market : [];
+        journalState.hf_currency = Array.isArray(data.header_filters.currency) ? data.header_filters.currency : [];
+        journalState.hf_symbol_name = Array.isArray(data.header_filters.symbol_name) ? data.header_filters.symbol_name : [];
+        journalState.hf_type = Array.isArray(data.header_filters.type) ? data.header_filters.type : [];
+        journalState.hf_win_lose = Array.isArray(data.header_filters.win_lose) ? data.header_filters.win_lose : [];
+      }
+      if (data.filter_options) {
+        journalHeaderFilterOptions = data.filter_options;
+      }
       journalSummary.textContent =
         `Showing ${data.events.length} / ${data.filtered_events} filtered events (${data.total_all_events} total)`;
       journalPageInfo.textContent = `Page ${data.page} / ${data.total_pages} | Page Size ${data.page_size}`;
@@ -865,6 +1210,8 @@
       }
       renderActiveFilterBadges(data.filters || {});
       renderJournalPagination(data);
+      updateJournalHeaderFilterButtons();
+      applyJournalHeaderFilters();
 
       if (pushUrl) {
         const url = `/journal?${buildJournalParams(journalState).toString()}`;
@@ -888,6 +1235,12 @@
       event_type: "",
       date_from: "",
       date_to: "",
+      hf_ticker: [],
+      hf_market: [],
+      hf_currency: [],
+      hf_symbol_name: [],
+      hf_type: [],
+      hf_win_lose: [],
     });
     await loadJournalPage(1, true);
   });
@@ -908,10 +1261,18 @@
       event_type: params.get("event_type") || "",
       date_from: params.get("date_from") || "",
       date_to: params.get("date_to") || "",
+      hf_ticker: params.getAll("hf_ticker"),
+      hf_market: params.getAll("hf_market"),
+      hf_currency: params.getAll("hf_currency"),
+      hf_symbol_name: params.getAll("hf_symbol_name"),
+      hf_type: params.getAll("hf_type"),
+      hf_win_lose: params.getAll("hf_win_lose"),
     });
     updateFilterFormFromState();
     await loadJournalPage(journalState.page, false);
   });
+
+  initJournalHeaderFilters();
 
   if (canWrite) {
     const eventImageFileInput = document.getElementById("event-image-file-input");

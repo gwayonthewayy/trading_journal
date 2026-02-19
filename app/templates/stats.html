@@ -18,7 +18,7 @@
       <p>MDD: {{ "%.2f"|format(data.current.weekly.mdd_pct) }}%</p>
       <p>Return M1: {{ "%.2f"|format(data.current.weekly.return_method1_pct) if data.current.weekly.return_method1_pct is not none else "N/A" }}%</p>
       <p>Return M2: {{ "%.2f"|format(data.current.weekly.return_method2_pct) if data.current.weekly.return_method2_pct is not none else "N/A" }}%</p>
-      <p>Realized PnL: {{ "%.2f"|format(data.current.weekly.realized_pnl) }}</p>
+      <p>Realized PnL: {{ data.base_currency_symbol }}{{ "{:,.2f}".format(data.current.weekly.realized_pnl) }}</p>
       <p>Win Rate: {{ "%.2f"|format(data.current.weekly.win_rate_pct) if data.current.weekly.win_rate_pct is not none else "N/A" }}%</p>
       <p>BE Rate: {{ "%.2f"|format(data.current.weekly.be_rate_pct) if data.current.weekly.be_rate_pct is not none else "N/A" }}%</p>
     {% else %}
@@ -36,7 +36,7 @@
       <p>MDD: {{ "%.2f"|format(data.current.monthly.mdd_pct) }}%</p>
       <p>Return M1: {{ "%.2f"|format(data.current.monthly.return_method1_pct) if data.current.monthly.return_method1_pct is not none else "N/A" }}%</p>
       <p>Return M2: {{ "%.2f"|format(data.current.monthly.return_method2_pct) if data.current.monthly.return_method2_pct is not none else "N/A" }}%</p>
-      <p>Realized PnL: {{ "%.2f"|format(data.current.monthly.realized_pnl) }}</p>
+      <p>Realized PnL: {{ data.base_currency_symbol }}{{ "{:,.2f}".format(data.current.monthly.realized_pnl) }}</p>
       <p>Win Rate: {{ "%.2f"|format(data.current.monthly.win_rate_pct) if data.current.monthly.win_rate_pct is not none else "N/A" }}%</p>
       <p>BE Rate: {{ "%.2f"|format(data.current.monthly.be_rate_pct) if data.current.monthly.be_rate_pct is not none else "N/A" }}%</p>
     {% else %}
@@ -54,7 +54,7 @@
       <p>MDD: {{ "%.2f"|format(data.current.yearly.mdd_pct) }}%</p>
       <p>Return M1: {{ "%.2f"|format(data.current.yearly.return_method1_pct) if data.current.yearly.return_method1_pct is not none else "N/A" }}%</p>
       <p>Return M2: {{ "%.2f"|format(data.current.yearly.return_method2_pct) if data.current.yearly.return_method2_pct is not none else "N/A" }}%</p>
-      <p>Realized PnL: {{ "%.2f"|format(data.current.yearly.realized_pnl) }}</p>
+      <p>Realized PnL: {{ data.base_currency_symbol }}{{ "{:,.2f}".format(data.current.yearly.realized_pnl) }}</p>
       <p>Win Rate: {{ "%.2f"|format(data.current.yearly.win_rate_pct) if data.current.yearly.win_rate_pct is not none else "N/A" }}%</p>
       <p>BE Rate: {{ "%.2f"|format(data.current.yearly.be_rate_pct) if data.current.yearly.be_rate_pct is not none else "N/A" }}%</p>
     {% else %}
@@ -181,6 +181,60 @@
 </section>
 
 <section class="card">
+  <div class="card-head">
+    <h3>Closed Trade PnL Distribution</h3>
+    <p>모든 종료(SELL) 거래의 실현손익 분포를 자동 구간으로 표시합니다.</p>
+  </div>
+  <div class="dist-layout">
+    <div>
+      <div id="closed-dist-summary" class="small"></div>
+      <div id="chart-closed-dist" class="chart-wrap"></div>
+    </div>
+    <div class="table-wrap dist-table-wrap">
+      <table class="dist-table">
+        <thead>
+          <tr>
+            <th>Bin</th>
+            <th>Range</th>
+            <th>Count</th>
+            <th>Ratio</th>
+            <th>Cum%</th>
+          </tr>
+        </thead>
+        <tbody id="closed-dist-table-body"></tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<section class="card">
+  <div class="card-head">
+    <h3>Closed Trade Return Distribution</h3>
+    <p>모든 종료(SELL) 거래의 개별 수익률/손실률 분포(%)를 표시합니다.</p>
+  </div>
+  <div class="dist-layout">
+    <div>
+      <div id="closed-return-dist-summary" class="small"></div>
+      <div id="chart-closed-return-dist" class="chart-wrap"></div>
+    </div>
+    <div class="table-wrap dist-table-wrap">
+      <table class="dist-table">
+        <thead>
+          <tr>
+            <th>Bin</th>
+            <th>Range</th>
+            <th>Count</th>
+            <th>Ratio</th>
+            <th>Cum%</th>
+          </tr>
+        </thead>
+        <tbody id="closed-return-dist-table-body"></tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<section class="card">
   <h3>Weekly History</h3>
   <div class="table-wrap">
     <table>
@@ -212,11 +266,11 @@
           <td>{{ "%.2f"|format(row.return_method1_pct) if row.return_method1_pct is not none else "N/A" }}%</td>
           <td>{{ "%.2f"|format(row.return_method2_pct) if row.return_method2_pct is not none else "N/A" }}%</td>
           <td>{{ "%.2f"|format(row.mdd_pct) }}%</td>
-          <td>{{ "%.2f"|format(row.realized_pnl) }}</td>
-          <td>{{ "%.2f"|format(row.deposit_sum) }}</td>
-          <td>{{ "%.2f"|format(row.withdraw_sum) }}</td>
-          <td>{{ "%.2f"|format(row.asset_start) }}</td>
-          <td>{{ "%.2f"|format(row.asset_end) }}</td>
+          <td>{{ data.base_currency_symbol }}{{ "{:,.2f}".format(row.realized_pnl) }}</td>
+          <td>{{ data.base_currency_symbol }}{{ "{:,.2f}".format(row.deposit_sum) }}</td>
+          <td>{{ data.base_currency_symbol }}{{ "{:,.2f}".format(row.withdraw_sum) }}</td>
+          <td>{{ data.base_currency_symbol }}{{ "{:,.2f}".format(row.asset_start) }}</td>
+          <td>{{ data.base_currency_symbol }}{{ "{:,.2f}".format(row.asset_end) }}</td>
         </tr>
         {% endfor %}
       </tbody>
@@ -256,11 +310,11 @@
           <td>{{ "%.2f"|format(row.return_method1_pct) if row.return_method1_pct is not none else "N/A" }}%</td>
           <td>{{ "%.2f"|format(row.return_method2_pct) if row.return_method2_pct is not none else "N/A" }}%</td>
           <td>{{ "%.2f"|format(row.mdd_pct) }}%</td>
-          <td>{{ "%.2f"|format(row.realized_pnl) }}</td>
-          <td>{{ "%.2f"|format(row.deposit_sum) }}</td>
-          <td>{{ "%.2f"|format(row.withdraw_sum) }}</td>
-          <td>{{ "%.2f"|format(row.asset_start) }}</td>
-          <td>{{ "%.2f"|format(row.asset_end) }}</td>
+          <td>{{ data.base_currency_symbol }}{{ "{:,.2f}".format(row.realized_pnl) }}</td>
+          <td>{{ data.base_currency_symbol }}{{ "{:,.2f}".format(row.deposit_sum) }}</td>
+          <td>{{ data.base_currency_symbol }}{{ "{:,.2f}".format(row.withdraw_sum) }}</td>
+          <td>{{ data.base_currency_symbol }}{{ "{:,.2f}".format(row.asset_start) }}</td>
+          <td>{{ data.base_currency_symbol }}{{ "{:,.2f}".format(row.asset_end) }}</td>
         </tr>
         {% endfor %}
       </tbody>
@@ -300,11 +354,11 @@
           <td>{{ "%.2f"|format(row.return_method1_pct) if row.return_method1_pct is not none else "N/A" }}%</td>
           <td>{{ "%.2f"|format(row.return_method2_pct) if row.return_method2_pct is not none else "N/A" }}%</td>
           <td>{{ "%.2f"|format(row.mdd_pct) }}%</td>
-          <td>{{ "%.2f"|format(row.realized_pnl) }}</td>
-          <td>{{ "%.2f"|format(row.deposit_sum) }}</td>
-          <td>{{ "%.2f"|format(row.withdraw_sum) }}</td>
-          <td>{{ "%.2f"|format(row.asset_start) }}</td>
-          <td>{{ "%.2f"|format(row.asset_end) }}</td>
+          <td>{{ data.base_currency_symbol }}{{ "{:,.2f}".format(row.realized_pnl) }}</td>
+          <td>{{ data.base_currency_symbol }}{{ "{:,.2f}".format(row.deposit_sum) }}</td>
+          <td>{{ data.base_currency_symbol }}{{ "{:,.2f}".format(row.withdraw_sum) }}</td>
+          <td>{{ data.base_currency_symbol }}{{ "{:,.2f}".format(row.asset_start) }}</td>
+          <td>{{ data.base_currency_symbol }}{{ "{:,.2f}".format(row.asset_end) }}</td>
         </tr>
         {% endfor %}
       </tbody>
@@ -319,9 +373,36 @@
     monthly: {{ data.monthly | tojson }},
     yearly: {{ data.yearly | tojson }},
   };
+  const closedTradePayload = {{ data.closed_trade_pnls | tojson }};
+  const closedTradeReturnPayload = {{ data.closed_trade_returns | tojson }};
+  const benchmarkPrefetch = {{ (benchmark_prefetch if benchmark_prefetch is defined else {}) | tojson }};
+  const baseCurrencySymbol = {{ data.base_currency_symbol | tojson }};
 
   function safeNum(v) {
     return typeof v === "number" && Number.isFinite(v) ? v : null;
+  }
+
+  function formatNumber(value, digits = 2) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return "";
+    return new Intl.NumberFormat("en-US", {
+      minimumFractionDigits: digits,
+      maximumFractionDigits: digits,
+    }).format(n);
+  }
+
+  function formatMoneyValue(value, digits = 2) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return "";
+    const sign = n < 0 ? "-" : "";
+    return `${sign}${baseCurrencySymbol}${formatNumber(Math.abs(n), digits)}`;
+  }
+
+  function formatPercentValue(value, digits = 2) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return "";
+    const sign = n < 0 ? "-" : "";
+    return `${sign}${formatNumber(Math.abs(n), digits)}%`;
   }
 
   function parseDateStart(s) {
@@ -360,6 +441,44 @@
       if (end && rowStart && rowStart > end) return false;
       return true;
     });
+  }
+
+  function filterClosedTradesByRange(rows, startDateStr, endDateStr) {
+    const start = parseDateStart(startDateStr);
+    const end = parseDateEnd(endDateStr);
+    return (rows || []).filter((row) => {
+      const ts = row && row.ts ? new Date(row.ts) : null;
+      if (!ts || Number.isNaN(ts.getTime())) return false;
+      if (start && ts < start) return false;
+      if (end && ts > end) return false;
+      return safeNum(row.realized_pnl) !== null;
+    });
+  }
+
+  function clearDistributionTableBody(tbodyId) {
+    const tbody = document.getElementById(tbodyId);
+    if (tbody) tbody.innerHTML = "";
+  }
+
+  function renderDistributionTableRows(tbodyId, bins, totalCount, rangeFormatter) {
+    const tbody = document.getElementById(tbodyId);
+    if (!tbody) return;
+    let cumulative = 0;
+    const rowsHtml = bins.map((bin, idx) => {
+      cumulative += bin.count;
+      const ratio = totalCount > 0 ? (bin.count / totalCount) * 100 : 0;
+      const cumulativePct = totalCount > 0 ? (cumulative / totalCount) * 100 : 0;
+      return `
+        <tr>
+          <td>${idx + 1}</td>
+          <td>${escapeXml(rangeFormatter(bin.low, bin.high))}</td>
+          <td>${bin.count}</td>
+          <td>${formatNumber(ratio, 1)}%</td>
+          <td>${formatNumber(cumulativePct, 1)}%</td>
+        </tr>
+      `;
+    }).join("");
+    tbody.innerHTML = rowsHtml;
   }
 
   function escapeXml(text) {
@@ -573,6 +692,193 @@
     summary.textContent = `N=${n} | Mean=${mean.toFixed(2)}% | Median=${(median ?? 0).toFixed(2)}% | Min=${minV.toFixed(2)}% | Max=${maxV.toFixed(2)}%`;
   }
 
+  function smoothCurvePath(points) {
+    if (!points.length) return "";
+    if (points.length === 1) return `M ${points[0].x} ${points[0].y}`;
+    let d = `M ${points[0].x} ${points[0].y}`;
+    for (let i = 1; i < points.length - 1; i++) {
+      const xc = (points[i].x + points[i + 1].x) / 2;
+      const yc = (points[i].y + points[i + 1].y) / 2;
+      d += ` Q ${points[i].x} ${points[i].y} ${xc} ${yc}`;
+    }
+    const lastIdx = points.length - 1;
+    d += ` Q ${points[lastIdx - 1].x} ${points[lastIdx - 1].y} ${points[lastIdx].x} ${points[lastIdx].y}`;
+    return d;
+  }
+
+  function renderClosedTradeHistogram({
+    rows,
+    valueKey,
+    holderId,
+    summaryId,
+    tableBodyId,
+    ariaLabel,
+    title,
+    valueFormatter,
+    rangeFormatter,
+  }) {
+    const holder = document.getElementById(holderId);
+    const summary = document.getElementById(summaryId);
+    if (!holder || !summary) return;
+
+    const values = (rows || [])
+      .map((row) => safeNum(row[valueKey]))
+      .filter((value) => value !== null);
+
+    if (!values.length) {
+      summary.textContent = "선택한 기간에 유효한 종료 거래 데이터가 없습니다.";
+      holder.innerHTML = '<div class="small">No closed-trade data</div>';
+      clearDistributionTableBody(tableBodyId);
+      return;
+    }
+
+    const sorted = [...values].sort((a, b) => a - b);
+    const n = sorted.length;
+    let minV = sorted[0];
+    let maxV = sorted[n - 1];
+    let binCount = Math.max(8, Math.min(36, Math.round(Math.sqrt(n) * 1.5)));
+    if (maxV === minV) {
+      minV -= 0.5;
+      maxV += 0.5;
+      binCount = 1;
+    }
+
+    const bins = Array.from({ length: binCount }, (_, i) => ({
+      low: minV + ((maxV - minV) * i) / binCount,
+      high: minV + ((maxV - minV) * (i + 1)) / binCount,
+      count: 0,
+    }));
+
+    for (const value of sorted) {
+      let idx = Math.floor(((value - minV) / (maxV - minV)) * binCount);
+      if (idx < 0) idx = 0;
+      if (idx >= binCount) idx = binCount - 1;
+      bins[idx].count += 1;
+    }
+    renderDistributionTableRows(tableBodyId, bins, n, rangeFormatter);
+
+    const counts = bins.map((bin) => bin.count);
+    const smoothedCounts = counts.map((_, idx) => {
+      let weighted = 0;
+      let weightSum = 0;
+      for (let offset = -2; offset <= 2; offset++) {
+        const targetIdx = idx + offset;
+        if (targetIdx < 0 || targetIdx >= counts.length) continue;
+        const weight = offset === 0 ? 0.4 : Math.abs(offset) === 1 ? 0.24 : 0.06;
+        weighted += counts[targetIdx] * weight;
+        weightSum += weight;
+      }
+      return weightSum > 0 ? weighted / weightSum : counts[idx];
+    });
+
+    const maxCount = Math.max(...counts, 1);
+    const maxSmoothCount = Math.max(...smoothedCounts, 1);
+    const axisMax = Math.max(maxCount, maxSmoothCount);
+
+    const width = 920;
+    const height = 320;
+    const margin = { top: 24, right: 18, bottom: 56, left: 58 };
+    const plotW = width - margin.left - margin.right;
+    const plotH = height - margin.top - margin.bottom;
+    const step = plotW / binCount;
+    const barW = Math.max(4, step - 4);
+    const x = (idx) => margin.left + idx * step + (step - barW) / 2;
+    const y = (count) => margin.top + ((axisMax - count) / axisMax) * plotH;
+
+    let svg = "";
+    svg += `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeXml(ariaLabel)}">`;
+    svg += `<rect x="0" y="0" width="${width}" height="${height}" fill="#fffdfa" />`;
+    for (let i = 0; i <= 4; i++) {
+      const c = Math.round((axisMax * i) / 4);
+      const py = y(c);
+      svg += `<line x1="${margin.left}" y1="${py}" x2="${margin.left + plotW}" y2="${py}" stroke="#ddd3c4" stroke-width="1" />`;
+      svg += `<text x="${margin.left - 8}" y="${py + 4}" text-anchor="end" font-size="11" fill="#6f6658">${c}</text>`;
+    }
+    svg += `<line x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${margin.top + plotH}" stroke="#b8ac99" stroke-width="1.2" />`;
+    svg += `<line x1="${margin.left}" y1="${margin.top + plotH}" x2="${margin.left + plotW}" y2="${margin.top + plotH}" stroke="#b8ac99" stroke-width="1.2" />`;
+
+    if (minV <= 0 && maxV >= 0) {
+      const zeroX = margin.left + ((0 - minV) / (maxV - minV)) * plotW;
+      svg += `<line x1="${zeroX}" y1="${margin.top}" x2="${zeroX}" y2="${margin.top + plotH}" stroke="#7f7669" stroke-width="1.1" stroke-dasharray="3 3" />`;
+    }
+
+    bins.forEach((bin, idx) => {
+      const px = x(idx);
+      const py = y(bin.count);
+      const h = margin.top + plotH - py;
+      const ratio = ((bin.count / n) * 100).toFixed(1);
+      const tip = `${rangeFormatter(bin.low, bin.high)} | ${bin.count} trades (${ratio}%)`;
+      svg += `<rect class="chart-hover-node" x="${px}" y="${py}" width="${barW}" height="${h}" fill="#215561" data-tip="${escapeXml(tip)}"><title>${escapeXml(tip)}</title></rect>`;
+    });
+
+    const curvePoints = smoothedCounts.map((count, idx) => ({
+      x: x(idx) + barW / 2,
+      y: y(count),
+    }));
+    const curvePath = smoothCurvePath(curvePoints);
+    if (curvePath) {
+      svg += `<path d="${curvePath}" fill="none" stroke="#b34a2f" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" />`;
+      for (const point of curvePoints) {
+        svg += `<circle cx="${point.x}" cy="${point.y}" r="2.1" fill="#b34a2f" />`;
+      }
+    }
+
+    const tickIndices = [0, Math.floor((binCount - 1) / 2), binCount - 1];
+    const drawnTicks = new Set();
+    for (const idx of tickIndices) {
+      if (idx < 0 || idx >= bins.length || drawnTicks.has(idx)) continue;
+      drawnTicks.add(idx);
+      const bin = bins[idx];
+      const px = x(idx) + barW / 2;
+      svg += `<line x1="${px}" y1="${margin.top + plotH}" x2="${px}" y2="${margin.top + plotH + 5}" stroke="#8e816c" stroke-width="1" />`;
+      svg += `<text x="${px}" y="${margin.top + plotH + 18}" text-anchor="middle" font-size="10" fill="#6f6658">${valueFormatter(bin.low, 0)}</text>`;
+    }
+
+    svg += `<text x="${margin.left}" y="14" font-size="12" fill="#1d1a16">${escapeXml(title)}</text>`;
+    svg += `<circle cx="${width - 214}" cy="14" r="4" fill="#215561"></circle>`;
+    svg += `<text x="${width - 204}" y="18" font-size="11" fill="#1d1a16">Histogram</text>`;
+    svg += `<circle cx="${width - 122}" cy="14" r="4" fill="#b34a2f"></circle>`;
+    svg += `<text x="${width - 112}" y="18" font-size="11" fill="#1d1a16">Smoothed</text>`;
+    svg += "</svg>";
+    holder.innerHTML = svg;
+    attachHoverTooltip(holder);
+
+    const mean = values.reduce((acc, value) => acc + value, 0) / n;
+    const median = percentile(sorted, 0.5);
+    summary.textContent = `N=${n} | Mean=${valueFormatter(mean, 2)} | Median=${valueFormatter(median ?? 0, 2)} | Min=${valueFormatter(minV, 2)} | Max=${valueFormatter(maxV, 2)}`;
+  }
+
+  function renderClosedTradeDistribution(rows, startDateStr, endDateStr) {
+    const filteredRows = filterClosedTradesByRange(rows, startDateStr, endDateStr);
+    renderClosedTradeHistogram({
+      rows: filteredRows,
+      valueKey: "realized_pnl",
+      holderId: "chart-closed-dist",
+      summaryId: "closed-dist-summary",
+      tableBodyId: "closed-dist-table-body",
+      ariaLabel: "Closed trade PnL distribution",
+      title: "Closed Trade Realized PnL Distribution",
+      valueFormatter: formatMoneyValue,
+      rangeFormatter: (low, high) => `${formatMoneyValue(low, 2)} ~ ${formatMoneyValue(high, 2)}`,
+    });
+  }
+
+  function renderClosedTradeReturnDistribution(rows, startDateStr, endDateStr) {
+    const filteredRows = filterClosedTradesByRange(rows, startDateStr, endDateStr)
+      .filter((row) => safeNum(row.return_pct) !== null);
+    renderClosedTradeHistogram({
+      rows: filteredRows,
+      valueKey: "return_pct",
+      holderId: "chart-closed-return-dist",
+      summaryId: "closed-return-dist-summary",
+      tableBodyId: "closed-return-dist-table-body",
+      ariaLabel: "Closed trade return distribution",
+      title: "Closed Trade Return(%) Distribution",
+      valueFormatter: formatPercentValue,
+      rangeFormatter: (low, high) => `${formatPercentValue(low, 2)} ~ ${formatPercentValue(high, 2)}`,
+    });
+  }
+
   function attachHoverTooltip(holder) {
     if (!holder) return;
     holder.classList.add("has-hover-tip");
@@ -750,7 +1056,14 @@
   const distMethod = document.getElementById("dist-method");
   const modeButtons = Array.from(document.querySelectorAll(".chart-mode-btn"));
   let chartMode = "period";
-  let benchmarkPayload = { symbol: null, daily: [], weekly: [], monthly: [], yearly: [] };
+  const initialBenchmarkSymbol = benchmarkSelect?.value || "SPY";
+  let benchmarkPayload = benchmarkPrefetch[initialBenchmarkSymbol] || {
+    symbol: initialBenchmarkSymbol,
+    daily: [],
+    weekly: [],
+    monthly: [],
+    yearly: [],
+  };
 
   function renderFxChart(payload) {
     if (!fxChartHolder) return;
@@ -844,12 +1157,19 @@
   }
 
   async function loadBenchmark(symbol) {
+    const prefetched = benchmarkPrefetch[symbol];
+    if (prefetched && Array.isArray(prefetched.daily)) {
+      benchmarkPayload = prefetched;
+      if (!prefetched.error) return;
+    }
+
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 10000);
     let res;
     try {
       res = await fetch(`/api/benchmark/returns?symbol=${encodeURIComponent(symbol)}`, {
         signal: controller.signal,
+        credentials: "same-origin",
       });
     } catch (err) {
       if (err && err.name === "AbortError") {
@@ -868,7 +1188,12 @@
       } catch (_) {}
       throw new Error(msg);
     }
+    const contentType = String(res.headers.get("content-type") || "").toLowerCase();
+    if (!contentType.includes("application/json")) {
+      throw new Error("invalid response type");
+    }
     benchmarkPayload = await res.json();
+    benchmarkPrefetch[symbol] = benchmarkPayload;
   }
 
   function renderFilteredCharts() {
@@ -901,8 +1226,11 @@
       },
       chartMode,
     );
+    renderClosedTradeDistribution(closedTradePayload, startVal, endVal);
+    renderClosedTradeReturnDistribution(closedTradeReturnPayload, startVal, endVal);
 
-    rangeMeta.textContent = `Mode: ${modeLabel(chartMode)} | Benchmark: ${benchmarkPayload.symbol || "N/A"} | Daily: ${daily.length} / Weekly: ${weekly.length} / Monthly: ${monthly.length} / Yearly: ${yearly.length}`;
+    const bmPointCount = dailyMerged.filter((row) => safeNum(row.benchmark_return_pct) !== null).length;
+    rangeMeta.textContent = `Mode: ${modeLabel(chartMode)} | Benchmark: ${benchmarkPayload.symbol || "N/A"} | Benchmark daily points: ${bmPointCount} | Daily: ${daily.length} / Weekly: ${weekly.length} / Monthly: ${monthly.length} / Yearly: ${yearly.length}`;
   }
 
   async function loadBenchmarkAndRender() {
@@ -913,7 +1241,9 @@
       await loadBenchmark(selected);
     } catch (err) {
       benchmarkPayload = { symbol: benchmarkSelect.value, daily: [], weekly: [], monthly: [], yearly: [] };
-      rangeError.textContent = `Benchmark load failed: ${err.message}`;
+      const prefetched = benchmarkPrefetch[benchmarkSelect.value];
+      const prefetchedMsg = prefetched && prefetched.error ? ` (prefetch: ${prefetched.error})` : "";
+      rangeError.textContent = `Benchmark load failed: ${err.message}${prefetchedMsg}`;
     }
     renderFilteredCharts();
   }

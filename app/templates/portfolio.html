@@ -2,11 +2,11 @@
 {% block page_header %}
 <section class="page-head">
   <h1>Portfolio Overview</h1>
-  <p>종목별 포지션과 lot 단위 리스크를 함께 확인합니다.</p>
+  <p>Track open positions and lot-level risk in one place.</p>
   <div class="pill-row">
-    <span class="pill">Open Qty {{ "%.4f"|format(data.totals.qty_open) }}</span>
-    <span class="pill">Open Risk {{ "%.2f"|format(data.totals.open_risk) }} {{ data.base_currency }}</span>
-    <span class="pill">Open Risk {{ "%.2f"|format(data.totals.open_risk_pct) }}%</span>
+    <span class="pill">Open Qty {{ "{:,.4f}".format(data.totals.qty_open) }}</span>
+    <span class="pill">Open Risk {{ data.base_currency_symbol }}{{ "{:,.2f}".format(data.totals.open_risk) }}</span>
+    <span class="pill">Open Risk (Cost Base) {{ "%.2f"|format(data.totals.open_risk_pct) }}%</span>
   </div>
 </section>
 {% endblock %}
@@ -14,19 +14,31 @@
 {% block content %}
 <section class="metrics">
   <div class="metric">
-    <div class="label">Book Asset ({{ data.base_currency }})</div>
-    <div class="value">{{ "%.2f"|format(data.book_asset) }}</div>
+    <div class="label">Open Position Value (MTM, {{ data.base_currency }})</div>
+    <div class="value">{{ data.usd_currency_symbol }}{{ "{:,.2f}".format(data.open_position_mtm_dual.usd) if data.open_position_mtm_dual.usd is not none else "N/A" }}</div>
+    <div class="hint">{{ data.krw_currency_symbol }}{{ "{:,.0f}".format(data.open_position_mtm_dual.krw) if data.open_position_mtm_dual.krw is not none else "N/A" }}</div>
+  </div>
+  <div class="metric">
+    <div class="label">Open Position Value (Cost, {{ data.base_currency }})</div>
+    <div class="value">{{ data.usd_currency_symbol }}{{ "{:,.2f}".format(data.open_position_cost_dual.usd) if data.open_position_cost_dual.usd is not none else "N/A" }}</div>
+    <div class="hint">{{ data.krw_currency_symbol }}{{ "{:,.0f}".format(data.open_position_cost_dual.krw) if data.open_position_cost_dual.krw is not none else "N/A" }}</div>
   </div>
   <div class="metric">
     <div class="label">Cash Balance ({{ data.base_currency }})</div>
-    <div class="value">{{ "%.2f"|format(data.cash_balance) }}</div>
+    <div class="value">{{ data.usd_currency_symbol }}{{ "{:,.2f}".format(data.cash_balance_dual.usd) if data.cash_balance_dual.usd is not none else "N/A" }}</div>
+    <div class="hint">{{ data.krw_currency_symbol }}{{ "{:,.0f}".format(data.cash_balance_dual.krw) if data.cash_balance_dual.krw is not none else "N/A" }}</div>
   </div>
   <div class="metric">
     <div class="label">Total Open Risk ({{ data.base_currency }})</div>
-    <div class="value">{{ "%.2f"|format(data.totals.open_risk) }}</div>
+    <div class="value">{{ data.base_currency_symbol }}{{ "{:,.2f}".format(data.totals.open_risk) }}</div>
+    <div class="hint">
+      {{ data.usd_currency_symbol }}{{ "{:,.2f}".format(data.totals_open_risk_dual.usd) if data.totals_open_risk_dual.usd is not none else "N/A" }}
+      /
+      {{ data.krw_currency_symbol }}{{ "{:,.0f}".format(data.totals_open_risk_dual.krw) if data.totals_open_risk_dual.krw is not none else "N/A" }}
+    </div>
   </div>
   <div class="metric">
-    <div class="label">Total Open Risk %</div>
+    <div class="label">Total Open Risk % (Cost Base)</div>
     <div class="value">{{ "%.2f"|format(data.totals.open_risk_pct) }}%</div>
   </div>
 </section>
@@ -34,41 +46,72 @@
 <section class="card">
   <div class="card-head">
     <h3>Portfolio by Ticker</h3>
-    <p>row를 펼치면 lot 단위 세부 내역을 확인할 수 있습니다.</p>
+    <p>Expand each row to see lot-level details.</p>
   </div>
 
   <div class="table-wrap">
-    <table>
+    <table id="portfolio-table">
       <thead>
         <tr>
-          <th>Ticker</th>
-          <th>Market/Exchange</th>
-          <th>Currency</th>
-          <th>Name</th>
+          <th class="th-filterable" data-table-filter-key="ticker" data-table-filter-label="Ticker">
+            <span class="th-filter-head">
+              <span class="th-filter-title">Ticker</span>
+              <button type="button" class="th-filter-btn" aria-label="Filter Ticker" title="Filter Ticker">v</button>
+            </span>
+          </th>
+          <th class="th-filterable" data-table-filter-key="market_exchange" data-table-filter-label="Market/Exchange">
+            <span class="th-filter-head">
+              <span class="th-filter-title">Market/Exchange</span>
+              <button type="button" class="th-filter-btn" aria-label="Filter Market/Exchange" title="Filter Market/Exchange">v</button>
+            </span>
+          </th>
+          <th class="th-filterable" data-table-filter-key="currency" data-table-filter-label="Currency">
+            <span class="th-filter-head">
+              <span class="th-filter-title">Currency</span>
+              <button type="button" class="th-filter-btn" aria-label="Filter Currency" title="Filter Currency">v</button>
+            </span>
+          </th>
+          <th class="th-filterable" data-table-filter-key="symbol_name" data-table-filter-label="Name">
+            <span class="th-filter-head">
+              <span class="th-filter-title">Name</span>
+              <button type="button" class="th-filter-btn" aria-label="Filter Name" title="Filter Name">v</button>
+            </span>
+          </th>
           <th>Qty</th>
           <th>Avg Entry</th>
           <th>SL/TP</th>
           <th>Cost Amount</th>
           <th>Open Risk</th>
-          <th>Open Risk %</th>
+          <th>Risk % (Total Cost)</th>
+          <th>Open Risk % (Position)</th>
         </tr>
       </thead>
       <tbody>
       {% for row in data.rows %}
-        <tr>
+        <tr
+          class="portfolio-row"
+          data-filter-group="{{ loop.index }}"
+          data-filter-ticker="{{ row.ticker }}"
+          data-filter-market="{{ row.market or '' }}"
+          data-filter-exchange="{{ row.exchange or '' }}"
+          data-filter-currency="{{ row.currency or '' }}"
+          data-filter-name="{{ row.symbol_name or '' }}"
+        >
           <td><strong>{{ row.ticker }}</strong></td>
           <td>{{ row.market or "" }} / {{ row.exchange or "" }}</td>
           <td>{{ row.currency or "" }}</td>
           <td>{{ row.symbol_name or "" }}</td>
-          <td>{{ "%.4f"|format(row.qty_open) }}</td>
-          <td>{{ "%.4f"|format(row.avg_entry_price) }}</td>
+          <td>{{ "{:,.4f}".format(row.qty_open) }}</td>
+          {% set row_currency_symbol = "$" if row.currency == "USD" else "₩" if row.currency == "KRW" else "HK$" if row.currency == "HKD" else "" %}
+          <td>{{ row_currency_symbol }}{{ "{:,.4f}".format(row.avg_entry_price) }}</td>
           <td>{{ row.sl_tp }}</td>
-          <td>{{ "%.2f"|format(row.amount_cost) }}</td>
-          <td>{{ "%.2f"|format(row.open_risk) }}</td>
+          <td>{{ data.base_currency_symbol }}{{ "{:,.2f}".format(row.amount_cost) }}</td>
+          <td>{{ data.base_currency_symbol }}{{ "{:,.2f}".format(row.open_risk) }}</td>
+          <td>{{ "%.2f"|format(row.open_risk_total_cost_pct) }}%</td>
           <td>{{ "%.2f"|format(row.open_risk_pct) }}%</td>
         </tr>
-        <tr>
-          <td colspan="10">
+        <tr class="portfolio-row-detail" data-filter-group="{{ loop.index }}">
+          <td colspan="11">
             <details>
               <summary>Lots for {{ row.ticker }}</summary>
               <div class="table-wrap" style="margin-top: 8px;">
@@ -85,6 +128,9 @@
                       <th>Reason</th>
                       <th>Note</th>
                       <th>Open Risk</th>
+                      {% if can_write %}
+                      <th>Set SL/TP</th>
+                      {% endif %}
                     </tr>
                   </thead>
                   <tbody>
@@ -92,14 +138,39 @@
                     <tr>
                       <td>{{ lot.lot_id }}</td>
                       <td>{{ lot.opened_at }}</td>
-                      <td>{{ "%.4f"|format(lot.qty_open) }}</td>
-                      <td>{{ "%.4f"|format(lot.entry_price) }}</td>
-                      <td>{{ lot.sl if lot.sl is not none else "" }}</td>
-                      <td>{{ lot.tp if lot.tp is not none else "" }}</td>
-                      <td>{{ "%.2f"|format(lot.buy_fee) }}</td>
+                      <td>{{ "{:,.4f}".format(lot.qty_open) }}</td>
+                      {% set lot_currency_symbol = "$" if lot.currency == "USD" else "₩" if lot.currency == "KRW" else "HK$" if lot.currency == "HKD" else "" %}
+                      <td>{{ lot_currency_symbol }}{{ "{:,.4f}".format(lot.entry_price) }}</td>
+                      <td>{{ lot.sl_display }}</td>
+                      <td>{{ lot.tp_display }}</td>
+                      <td>{{ data.base_currency_symbol }}{{ "{:,.2f}".format(lot.buy_fee) }}</td>
                       <td>{{ lot.buy_reason or "" }}</td>
                       <td>{{ lot.note or "" }}</td>
-                      <td>{{ "%.2f"|format(lot.open_risk) }}</td>
+                      <td>{{ data.base_currency_symbol }}{{ "{:,.2f}".format(lot.open_risk) }}</td>
+                      {% if can_write %}
+                      <td>
+                        <div class="lot-edit-controls" data-lot-id="{{ lot.lot_id }}">
+                          <input
+                            type="number"
+                            step="0.0001"
+                            min="0"
+                            class="lot-sl-input"
+                            value="{{ lot.sl if lot.sl is not none else '' }}"
+                            placeholder="SL"
+                          />
+                          <input
+                            type="number"
+                            step="0.0001"
+                            min="0"
+                            class="lot-tp-input"
+                            value="{{ lot.tp if lot.tp is not none else '' }}"
+                            placeholder="TP"
+                          />
+                          <button type="button" class="secondary lot-save-btn">Save</button>
+                          <div class="small lot-save-msg" aria-live="polite"></div>
+                        </div>
+                      </td>
+                      {% endif %}
                     </tr>
                     {% endfor %}
                   </tbody>
@@ -109,20 +180,304 @@
           </td>
         </tr>
       {% endfor %}
-        <tr>
+        <tr class="portfolio-total-row">
           <th>TOTAL</th>
           <th></th>
           <th></th>
           <th></th>
-          <th>{{ "%.4f"|format(data.totals.qty_open) }}</th>
+          <th>{{ "{:,.4f}".format(data.totals.qty_open) }}</th>
           <th></th>
           <th></th>
-          <th>{{ "%.2f"|format(data.totals.amount_cost) }}</th>
-          <th>{{ "%.2f"|format(data.totals.open_risk) }}</th>
+          <th>{{ data.base_currency_symbol }}{{ "{:,.2f}".format(data.totals.amount_cost) }}</th>
+          <th>{{ data.base_currency_symbol }}{{ "{:,.2f}".format(data.totals.open_risk) }}</th>
+          <th>{{ "%.2f"|format(data.totals.open_risk_total_cost_pct) }}%</th>
           <th>{{ "%.2f"|format(data.totals.open_risk_pct) }}%</th>
         </tr>
       </tbody>
     </table>
   </div>
 </section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(() => {
+  function escapeHtml(value) {
+    return String(value ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/\"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
+
+  const tableFilterBlankToken = "__BLANK__";
+  const portfolioTable = document.getElementById("portfolio-table");
+  const portfolioRows = Array.from(document.querySelectorAll("tr.portfolio-row[data-filter-group]"));
+  const portfolioDetailRows = Array.from(document.querySelectorAll("tr.portfolio-row-detail[data-filter-group]"));
+  const portfolioTotalRow = document.querySelector("tr.portfolio-total-row");
+  const detailRowByGroup = new Map(portfolioDetailRows.map((row) => [row.dataset.filterGroup, row]));
+  const portfolioFilterDefs = [
+    { key: "ticker", getter: (row) => row.dataset.filterTicker || "" },
+    {
+      key: "market_exchange",
+      getter: (row) => {
+        const market = String(row.dataset.filterMarket || "").trim();
+        const exchange = String(row.dataset.filterExchange || "").trim();
+        if (!market && !exchange) return "";
+        return `${market} / ${exchange}`.trim();
+      },
+    },
+    { key: "currency", getter: (row) => row.dataset.filterCurrency || "" },
+    { key: "symbol_name", getter: (row) => row.dataset.filterName || "" },
+  ];
+  const portfolioFilterState = new Map(portfolioFilterDefs.map((def) => [def.key, new Set()]));
+  const portfolioHeaderPopup = document.createElement("div");
+  portfolioHeaderPopup.className = "th-filter-menu th-filter-popup";
+  portfolioHeaderPopup.hidden = true;
+  document.body.appendChild(portfolioHeaderPopup);
+  let openPortfolioHeaderMenu = null;
+  let portfolioHeaderAnchor = null;
+
+  function normalizeTableFilterValue(value) {
+    const text = String(value || "").trim();
+    return text === "" ? tableFilterBlankToken : text;
+  }
+
+  function tableFilterLabel(value) {
+    return value === tableFilterBlankToken ? "(blank)" : value;
+  }
+
+  function getPortfolioFilterDef(key) {
+    return portfolioFilterDefs.find((def) => def.key === key) || null;
+  }
+
+  function getPortfolioFilterOptions(key) {
+    const def = getPortfolioFilterDef(key);
+    if (!def) return [];
+    const values = new Set();
+    for (const row of portfolioRows) {
+      values.add(normalizeTableFilterValue(def.getter(row)));
+    }
+    return Array.from(values).sort((a, b) =>
+      tableFilterLabel(a).localeCompare(tableFilterLabel(b), "ko", { numeric: true, sensitivity: "base" }),
+    );
+  }
+
+  function closePortfolioHeaderMenus() {
+    portfolioHeaderPopup.hidden = true;
+    portfolioHeaderPopup.innerHTML = "";
+    openPortfolioHeaderMenu = null;
+    portfolioHeaderAnchor = null;
+  }
+
+  function positionPortfolioHeaderPopup(anchor) {
+    if (!anchor) return;
+    const margin = 8;
+    const rect = anchor.getBoundingClientRect();
+    const popupRect = portfolioHeaderPopup.getBoundingClientRect();
+    let left = rect.left;
+    let top = rect.bottom + 6;
+    if (left + popupRect.width > window.innerWidth - margin) {
+      left = window.innerWidth - margin - popupRect.width;
+    }
+    if (left < margin) left = margin;
+    if (top + popupRect.height > window.innerHeight - margin) {
+      top = rect.top - popupRect.height - 6;
+    }
+    if (top < margin) top = margin;
+    portfolioHeaderPopup.style.left = `${left}px`;
+    portfolioHeaderPopup.style.top = `${top}px`;
+  }
+
+  function renderPortfolioHeaderFilterMenu(thElem) {
+    const key = thElem.dataset.tableFilterKey;
+    if (!key) return;
+
+    const selected = portfolioFilterState.get(key) || new Set();
+    const options = getPortfolioFilterOptions(key);
+    const label = thElem.dataset.tableFilterLabel || key;
+    const optionsHtml = options.length
+      ? options
+          .map((value) => `
+            <label class="th-filter-option">
+              <span class="th-filter-option-text">${escapeHtml(tableFilterLabel(value))}</span>
+              <input type="checkbox" value="${escapeHtml(value === tableFilterBlankToken ? "__BLANK__" : value)}" ${selected.has(value) ? "checked" : ""} />
+            </label>
+          `)
+          .join("")
+      : `<div class="th-filter-empty">No values</div>`;
+
+    portfolioHeaderPopup.innerHTML = `
+      <div class="th-filter-menu-head">
+        <strong class="th-filter-menu-title">${escapeHtml(label)}</strong>
+      </div>
+      <div class="th-filter-menu-actions">
+        <button type="button" class="secondary th-filter-menu-all">All</button>
+        <button type="button" class="secondary th-filter-menu-clear">Clear</button>
+      </div>
+      <div class="th-filter-menu-options">${optionsHtml}</div>
+      <div class="th-filter-menu-foot">
+        <button type="button" class="th-filter-menu-apply">Apply</button>
+      </div>
+    `;
+
+    portfolioHeaderPopup.querySelector(".th-filter-menu-all")?.addEventListener("click", () => {
+      portfolioHeaderPopup.querySelectorAll('input[type="checkbox"]').forEach((el) => {
+        el.checked = true;
+      });
+    });
+    portfolioHeaderPopup.querySelector(".th-filter-menu-clear")?.addEventListener("click", () => {
+      portfolioHeaderPopup.querySelectorAll('input[type="checkbox"]').forEach((el) => {
+        el.checked = false;
+      });
+    });
+    portfolioHeaderPopup.querySelector(".th-filter-menu-apply")?.addEventListener("click", () => {
+      const next = new Set(
+        Array.from(portfolioHeaderPopup.querySelectorAll('input[type="checkbox"]:checked')).map((el) =>
+          String(el.value) === "__BLANK__" ? tableFilterBlankToken : String(el.value),
+        ),
+      );
+      portfolioFilterState.set(key, next);
+      updatePortfolioHeaderFilterButtons();
+      applyPortfolioHeaderFilters();
+      closePortfolioHeaderMenus();
+    });
+  }
+
+  function updatePortfolioHeaderFilterButtons() {
+    document.querySelectorAll("#portfolio-table th.th-filterable").forEach((thElem) => {
+      const key = thElem.dataset.tableFilterKey;
+      const btn = thElem.querySelector(".th-filter-btn");
+      const selected = key ? portfolioFilterState.get(key) : null;
+      if (btn) btn.classList.toggle("active", !!selected && selected.size > 0);
+    });
+  }
+
+  function applyPortfolioHeaderFilters() {
+    let shown = 0;
+    for (const row of portfolioRows) {
+      let visible = true;
+      for (const def of portfolioFilterDefs) {
+        const selected = portfolioFilterState.get(def.key);
+        if (!selected || selected.size === 0) continue;
+        const value = normalizeTableFilterValue(def.getter(row));
+        if (!selected.has(value)) {
+          visible = false;
+          break;
+        }
+      }
+      row.hidden = !visible;
+      const detailRow = detailRowByGroup.get(row.dataset.filterGroup || "");
+      if (detailRow) detailRow.hidden = !visible;
+      if (visible) shown += 1;
+    }
+
+    if (portfolioTotalRow) portfolioTotalRow.hidden = shown === 0;
+  }
+
+  function initPortfolioHeaderFilters() {
+    if (!portfolioTable) return;
+    document.querySelectorAll("#portfolio-table th.th-filterable .th-filter-btn").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const thElem = btn.closest("th.th-filterable");
+        const key = thElem?.dataset.tableFilterKey || "";
+        if (!thElem || !key) return;
+        const reopening = !portfolioHeaderPopup.hidden && openPortfolioHeaderMenu === key;
+        closePortfolioHeaderMenus();
+        if (reopening) return;
+        renderPortfolioHeaderFilterMenu(thElem);
+        portfolioHeaderPopup.hidden = false;
+        positionPortfolioHeaderPopup(btn);
+        openPortfolioHeaderMenu = key;
+        portfolioHeaderAnchor = btn;
+      });
+    });
+
+    document.addEventListener("click", (e) => {
+      if (!e.target.closest(".th-filter-popup") && !e.target.closest("#portfolio-table th.th-filterable .th-filter-btn")) {
+        closePortfolioHeaderMenus();
+      }
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") closePortfolioHeaderMenus();
+    });
+    window.addEventListener("resize", closePortfolioHeaderMenus);
+    window.addEventListener("scroll", () => {
+      if (!portfolioHeaderPopup.hidden && portfolioHeaderAnchor) {
+        positionPortfolioHeaderPopup(portfolioHeaderAnchor);
+      }
+    }, true);
+
+    updatePortfolioHeaderFilterButtons();
+    applyPortfolioHeaderFilters();
+  }
+
+  initPortfolioHeaderFilters();
+
+  {% if can_write %}
+  async function postJson(url, payload) {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      let detail = `HTTP ${res.status}`;
+      try {
+        const body = await res.json();
+        if (body && body.detail) detail = String(body.detail);
+      } catch (_) {}
+      throw new Error(detail);
+    }
+    return res.json();
+  }
+
+  document.querySelectorAll(".lot-edit-controls").forEach((wrap) => {
+    const lotId = Number(wrap.dataset.lotId || "");
+    const slInput = wrap.querySelector(".lot-sl-input");
+    const tpInput = wrap.querySelector(".lot-tp-input");
+    const saveBtn = wrap.querySelector(".lot-save-btn");
+    const msg = wrap.querySelector(".lot-save-msg");
+    if (!lotId || !slInput || !tpInput || !saveBtn || !msg) return;
+
+    saveBtn.addEventListener("click", async () => {
+      msg.textContent = "";
+      const payload = { lot_id: lotId };
+
+      const slRaw = String(slInput.value || "").trim();
+      const tpRaw = String(tpInput.value || "").trim();
+      if (slRaw !== "") payload.new_sl = Number(slRaw);
+      if (tpRaw !== "") payload.new_tp = Number(tpRaw);
+
+      if (payload.new_sl === undefined && payload.new_tp === undefined) {
+        msg.textContent = "Enter SL or TP.";
+        return;
+      }
+      if (payload.new_sl !== undefined && !Number.isFinite(payload.new_sl)) {
+        msg.textContent = "SL must be a valid number.";
+        return;
+      }
+      if (payload.new_tp !== undefined && !Number.isFinite(payload.new_tp)) {
+        msg.textContent = "TP must be a valid number.";
+        return;
+      }
+
+      saveBtn.disabled = true;
+      try {
+        await postJson("/api/lot/sl", payload);
+        msg.textContent = "Saved.";
+        setTimeout(() => window.location.reload(), 250);
+      } catch (err) {
+        msg.textContent = `Error: ${err.message}`;
+      } finally {
+        saveBtn.disabled = false;
+      }
+    });
+  });
+  {% endif %}
+})();
+</script>
 {% endblock %}

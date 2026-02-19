@@ -405,6 +405,7 @@ button.secondary {
 .table-wrap {
   width: 100%;
   overflow-x: auto;
+  overflow-y: visible;
   border: 1px solid var(--line);
   border-radius: 12px;
   background: #fff;
@@ -466,9 +467,189 @@ summary {
   font-size: 0.84rem;
 }
 
+.lot-edit-controls {
+  display: grid;
+  grid-template-columns: minmax(72px, 1fr) minmax(72px, 1fr) auto;
+  gap: 6px;
+  align-items: center;
+}
+
+.lot-edit-controls input {
+  min-width: 0;
+  padding: 6px 8px;
+}
+
+.lot-edit-controls .lot-save-btn {
+  width: auto;
+  padding: 6px 10px;
+  white-space: nowrap;
+}
+
+.lot-edit-controls .lot-save-msg {
+  grid-column: 1 / -1;
+}
+
 .section-note {
   color: var(--subtle);
   margin: 0 0 10px;
+}
+
+.th-filterable {
+  position: static;
+  white-space: nowrap;
+}
+
+.th-filter-head {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.th-filter-title {
+  display: inline-block;
+  vertical-align: middle;
+}
+
+.th-filter-btn {
+  all: unset;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border-radius: 4px;
+  border: 1px solid #b9cadb;
+  background: #fff;
+  color: #294257;
+  font-size: 0.74rem;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.th-filter-btn.active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+
+.th-filter-btn:hover {
+  transform: none;
+  filter: none;
+}
+
+.th-filter-menu {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 35;
+  width: 248px;
+  border: 1px solid #b8c9d9;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 14px 28px rgba(20, 32, 43, 0.16);
+  padding: 0;
+  text-transform: none;
+  letter-spacing: normal;
+  overflow: hidden;
+}
+
+.th-filter-popup {
+  z-index: 60;
+}
+
+.th-filter-menu-head {
+  padding: 9px 10px;
+  border-bottom: 1px solid #e1e8ef;
+  background: linear-gradient(180deg, #f9fcff 0%, #f4f8fc 100%);
+}
+
+.th-filter-menu-title {
+  font-size: 0.78rem;
+  color: #1f3a51;
+  font-weight: 700;
+}
+
+.th-filter-menu-actions {
+  display: flex;
+  gap: 6px;
+  padding: 8px 10px;
+  border-bottom: 1px solid #e8edf3;
+}
+
+.th-filter-menu-actions button,
+.th-filter-menu .th-filter-menu-apply {
+  width: auto;
+  min-width: 68px;
+  padding: 5px 9px;
+  border-radius: 8px;
+  font-size: 0.74rem;
+  font-weight: 600;
+}
+
+.th-filter-menu-options {
+  margin: 0;
+  padding: 8px 10px;
+  max-height: 220px;
+  overflow-y: auto;
+  display: grid;
+  gap: 5px;
+}
+
+.th-filter-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: #233749;
+  font-size: 0.79rem;
+  text-transform: none;
+  letter-spacing: normal;
+  font-weight: 500;
+  padding: 6px 8px;
+  border: 1px solid #e4ebf2;
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+}
+
+.th-filter-option input {
+  width: auto;
+  margin: 0;
+  padding: 0;
+  order: 2;
+  accent-color: #1f5473;
+}
+
+.th-filter-option-text {
+  order: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.th-filter-option:hover {
+  background: #f5f9fd;
+  border-color: #c9d9e7;
+}
+
+.th-filter-menu-foot {
+  padding: 8px 10px;
+  border-top: 1px solid #e8edf3;
+  background: #f9fbfd;
+}
+
+.th-filter-menu-foot .th-filter-menu-apply {
+  width: 100%;
+  justify-content: center;
+}
+
+.th-filter-empty {
+  font-size: 0.78rem;
+  color: var(--subtle);
+  padding: 6px 2px;
 }
 
 .journal-tools {
@@ -657,6 +838,27 @@ summary {
   color: #41505f;
 }
 
+.wl-win,
+.wl-lose {
+  display: inline-block;
+  min-width: 22px;
+  text-align: center;
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.wl-win {
+  background: rgba(31, 84, 115, 0.14);
+  color: #1f5473;
+}
+
+.wl-lose {
+  background: rgba(158, 31, 31, 0.15);
+  color: #9e1f1f;
+}
+
 .chart-wrap {
   position: relative;
   width: 100%;
@@ -674,6 +876,28 @@ summary {
 
 .chart-wrap.has-hover-tip .chart-hover-node {
   cursor: crosshair;
+}
+
+.dist-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 12px;
+  align-items: start;
+}
+
+.dist-table-wrap {
+  max-height: 332px;
+  overflow: auto;
+}
+
+.dist-table {
+  width: 100%;
+}
+
+.dist-table th,
+.dist-table td {
+  white-space: nowrap;
+  font-size: 0.78rem;
 }
 
 .chart-hover-tip {
@@ -788,8 +1012,20 @@ summary {
     display: flex;
   }
 
+  .dist-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .dist-table-wrap {
+    max-height: 220px;
+  }
+
   .table-wrap {
     display: none;
+  }
+
+  .dist-table-wrap {
+    display: block;
   }
 
   .journal-mobile-cards {

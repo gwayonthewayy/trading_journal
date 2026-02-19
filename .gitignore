@@ -3,5 +3,6 @@ __pycache__/
 .venv/
 data/*.sqlite
 data/backups/*.sqlite
+data/cache/
 .env.runtime
 .access_info

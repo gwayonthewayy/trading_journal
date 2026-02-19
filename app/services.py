@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import html
 import json
 import math
 import re
@@ -40,19 +41,27 @@ ALLOWED_IMAGE_CONTENT_TYPES = {
     "image/webp": ".webp",
     "image/gif": ".gif",
 }
-BENCHMARK_SYMBOLS = ("SPY", "QQQ", "IWM", "FFTY")
+BENCHMARK_SYMBOLS = ("SPY", "QQQ", "IWM", "FFTY", "KOSPI", "KOSDAQ")
+BENCHMARK_YF_SYMBOL_MAP = {
+    "SPY": "SPY",
+    "QQQ": "QQQ",
+    "IWM": "IWM",
+    "FFTY": "FFTY",
+    "KOSPI": "^KS11",
+    "KOSDAQ": "^KQ11",
+}
 BENCHMARK_CACHE_TTL_SECONDS = 60 * 60 * 6
 FX_CACHE_TTL_SECONDS = 60 * 30
 QUOTE_CACHE_TTL_SECONDS = 60 * 5
 NAME_CACHE_TTL_SECONDS = 60 * 60 * 24
 WIN_RATE_BREAKEVEN_EPSILON_USD = 10.0
+RETURN_DENOMINATOR_MIN_BASE = 100.0
 BREAKEVEN_REASON_PATTERNS = (
     re.compile(r"\bbe\b", re.IGNORECASE),
     re.compile(r"break[\s_-]?even", re.IGNORECASE),
     re.compile(r"breakeven", re.IGNORECASE),
-    re.compile(r"본절", re.IGNORECASE),
-    re.compile(r"본전", re.IGNORECASE),
-    re.compile(r"손익분기", re.IGNORECASE),
+    re.compile(r"蹂몄젅", re.IGNORECASE),
+    re.compile(r"蹂몄쟾", re.IGNORECASE),
 )
 _benchmark_cache: dict[str, dict[str, Any]] = {}
 _fx_cache: dict[str, dict[str, Any]] = {}
@@ -181,6 +190,96 @@ def _to_base(amount_local: float | None, fx_rate_to_base: float | None) -> float
         return 0.0
     fx = fx_rate_to_base if (fx_rate_to_base is not None and fx_rate_to_base > 0) else 1.0
     return amount_local * fx
+
+
+def _currency_symbol(currency: str | None) -> str:
+    normalized = _normalize_upper_optional(currency)
+    if normalized == "USD":
+        return "$"
+    if normalized == "KRW":
+        return "₩"
+    if normalized == "HKD":
+        return "HK$"
+    if normalized:
+        return f"{normalized} "
+    return ""
+
+
+def _trim_decimal_text(text: str) -> str:
+    if "." not in text:
+        return text
+    return text.rstrip("0").rstrip(".")
+
+
+def _format_number_with_commas(value: float | int, decimals: int = 2) -> str:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return ""
+    if not math.isfinite(number):
+        return ""
+    return f"{number:,.{max(0, decimals)}f}"
+
+
+def _format_price_for_display(value: float | None) -> str:
+    if value is None:
+        return ""
+    abs_value = abs(value)
+    if abs_value >= 1000:
+        return _trim_decimal_text(_format_number_with_commas(value, 2))
+    if abs_value >= 1:
+        return _trim_decimal_text(_format_number_with_commas(value, 4))
+    return _trim_decimal_text(_format_number_with_commas(value, 6))
+
+
+def _format_sl_tp_value(value: float | None) -> str:
+    if value is None:
+        return ""
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return ""
+    if not math.isfinite(number):
+        return ""
+    abs_value = abs(number)
+    if abs_value >= 1000:
+        scaled = number / 1000.0
+        if abs(scaled) >= 100:
+            return f"{scaled:,.0f}K"
+        if abs(scaled) >= 10:
+            return f"{_trim_decimal_text(f'{scaled:,.1f}')}K"
+        return f"{_trim_decimal_text(f'{scaled:,.2f}')}K"
+    return _trim_decimal_text(_format_number_with_commas(number, 2 if abs_value >= 1 else 4))
+
+
+def _convert_currency_amount(
+    amount: float | None,
+    from_currency: str | None,
+    to_currency: str | None,
+    fx_date: date | None = None,
+) -> float | None:
+    if amount is None:
+        return None
+    source = _normalize_upper_optional(from_currency)
+    target = _normalize_upper_optional(to_currency)
+    if not source or not target:
+        return None
+    if source == target:
+        return float(amount)
+    try:
+        rate = _fetch_fx_rate_from_api(source, target, fx_date=fx_date)
+    except HTTPException:
+        return None
+    except Exception:
+        return None
+    return float(amount) * rate
+
+
+def _dual_currency_from_base(amount: float, base_currency: str) -> dict[str, float | None]:
+    return {
+        "usd": _convert_currency_amount(amount, base_currency, "USD"),
+        "krw": _convert_currency_amount(amount, base_currency, "KRW"),
+    }
 
 
 def _is_breakeven_sell(realized_pnl: float, reason: str | None) -> bool:
@@ -934,6 +1033,11 @@ def get_cash_balance(session: Session) -> float:
     return cash
 
 
+def get_cashflow_balance(session: Session) -> float:
+    events = session.exec(select(Event)).all()
+    return sum((event.cash_amount or 0.0) for event in events if event.type == EventType.CASHFLOW)
+
+
 def _has_cashflow_events(session: Session) -> bool:
     first_cashflow = session.exec(
         select(Event.id).where(Event.type == EventType.CASHFLOW).limit(1)
@@ -941,13 +1045,33 @@ def _has_cashflow_events(session: Session) -> bool:
     return first_cashflow is not None
 
 
-def get_book_asset(session: Session) -> float:
+def get_open_position_cost(session: Session) -> float:
     lots = session.exec(select(Lot).where(Lot.qty_open > 0)).all()
-    open_cost = sum(_to_base(lot.entry_price * lot.qty_open, lot.fx_rate_to_base) for lot in lots)
+    return sum(_to_base(lot.entry_price * lot.qty_open, lot.fx_rate_to_base) for lot in lots)
+
+
+def get_open_position_mtm(session: Session) -> float:
+    return _current_open_market_value(session)
+
+
+def get_book_asset_cost(session: Session) -> float:
+    open_cost = get_open_position_cost(session)
     if not _has_cashflow_events(session):
-        # If deposits are not tracked yet, show ledger asset as invested position cost.
         return open_cost
     return get_cash_balance(session) + open_cost
+
+
+def get_book_asset_mtm(session: Session) -> float:
+    open_market_value = get_open_position_mtm(session)
+    if not _has_cashflow_events(session):
+        # If deposits are not tracked yet, show ledger asset as current position value.
+        return open_market_value
+    return get_cash_balance(session) + open_market_value
+
+
+def get_book_asset(session: Session) -> float:
+    # Backward-compatible alias: Book Asset defaults to MTM view.
+    return get_book_asset_mtm(session)
 
 
 def _symbol_name_map(session: Session) -> dict[str, str]:
@@ -973,10 +1097,17 @@ def build_portfolio(session: Session) -> dict[str, Any]:
         )
         by_ticker[key].append(lot)
 
-    cash_balance = get_cash_balance(session)
-    book_asset = get_book_asset(session)
+    cash_balance = get_cashflow_balance(session)
+    open_position_mtm = get_open_position_mtm(session)
+    open_position_cost = get_open_position_cost(session)
+    book_asset_mtm = get_book_asset_mtm(session)
+    book_asset_cost = get_book_asset_cost(session)
+    book_asset = book_asset_mtm
+    # Open risk percentage is more stable when anchored to invested capital.
+    risk_pct_denominator = open_position_cost if open_position_cost > 0 else book_asset
 
     rows: list[dict[str, Any]] = []
+    total_cost_amount = sum(_to_base(lot.entry_price * lot.qty_open, lot.fx_rate_to_base) for lot in lots)
 
     for key in sorted(by_ticker.keys(), key=lambda k: (k[0], k[1] or "", k[2] or "", k[3] or "")):
         ticker, market, exchange, currency = key
@@ -986,13 +1117,14 @@ def build_portfolio(session: Session) -> dict[str, Any]:
         avg_entry_price = amount_cost / qty_open if qty_open else 0.0
 
         open_risk = sum(calc_lot_open_risk(lot, est_exit_fee_rate) for lot in ticker_lots)
-        open_risk_pct = (open_risk / book_asset * 100) if book_asset else 0.0
+        open_risk_pct = (open_risk / amount_cost * 100) if amount_cost else 0.0
+        open_risk_total_cost_pct = (open_risk / total_cost_amount * 100) if total_cost_amount else 0.0
 
         sl_tp_pairs = {(lot.sl, lot.tp) for lot in ticker_lots}
         if len(sl_tp_pairs) == 1:
             sl, tp = next(iter(sl_tp_pairs))
-            sl_str = "None" if sl is None else f"{sl:.4g}"
-            tp_str = "None" if tp is None else f"{tp:.4g}"
+            sl_str = "None" if sl is None else _format_sl_tp_value(sl)
+            tp_str = "None" if tp is None else _format_sl_tp_value(tp)
             sl_tp = f"SL {sl_str} / TP {tp_str}"
         else:
             sl_tp = "mixed"
@@ -1009,6 +1141,8 @@ def build_portfolio(session: Session) -> dict[str, Any]:
                 "entry_price": lot.entry_price,
                 "sl": lot.sl,
                 "tp": lot.tp,
+                "sl_display": _format_sl_tp_value(lot.sl),
+                "tp_display": _format_sl_tp_value(lot.tp),
                 "buy_fee": lot.buy_fee,
                 "buy_reason": lot.buy_reason,
                 "note": lot.note,
@@ -1030,6 +1164,7 @@ def build_portfolio(session: Session) -> dict[str, Any]:
                 "amount_cost": amount_cost,
                 "open_risk": open_risk,
                 "open_risk_pct": open_risk_pct,
+                "open_risk_total_cost_pct": open_risk_total_cost_pct,
                 "lots": lots_out,
             }
         )
@@ -1039,12 +1174,30 @@ def build_portfolio(session: Session) -> dict[str, Any]:
         "amount_cost": sum(row["amount_cost"] for row in rows),
         "open_risk": sum(row["open_risk"] for row in rows),
     }
-    totals["open_risk_pct"] = (totals["open_risk"] / book_asset * 100) if book_asset else 0.0
+    totals["open_risk_pct"] = (
+        (totals["open_risk"] / risk_pct_denominator * 100) if risk_pct_denominator else 0.0
+    )
+    totals["open_risk_total_cost_pct"] = (
+        (totals["open_risk"] / totals["amount_cost"] * 100) if totals["amount_cost"] else 0.0
+    )
 
     return {
         "base_currency": base_currency,
+        "base_currency_symbol": _currency_symbol(base_currency),
+        "krw_currency_symbol": _currency_symbol("KRW"),
+        "usd_currency_symbol": _currency_symbol("USD"),
         "cash_balance": cash_balance,
+        "cash_balance_dual": _dual_currency_from_base(cash_balance, base_currency),
+        "open_position_mtm": open_position_mtm,
+        "open_position_mtm_dual": _dual_currency_from_base(open_position_mtm, base_currency),
+        "open_position_cost": open_position_cost,
+        "open_position_cost_dual": _dual_currency_from_base(open_position_cost, base_currency),
         "book_asset": book_asset,
+        "book_asset_mtm": book_asset_mtm,
+        "book_asset_cost": book_asset_cost,
+        "risk_pct_denominator": risk_pct_denominator,
+        "totals_amount_cost_dual": _dual_currency_from_base(totals["amount_cost"], base_currency),
+        "totals_open_risk_dual": _dual_currency_from_base(totals["open_risk"], base_currency),
         "rows": rows,
         "totals": totals,
     }
@@ -1058,6 +1211,12 @@ def build_journal(
     event_type: str | None = None,
     date_from: date | None = None,
     date_to: date | None = None,
+    hf_ticker: list[str] | None = None,
+    hf_market: list[str] | None = None,
+    hf_currency: list[str] | None = None,
+    hf_symbol_name: list[str] | None = None,
+    hf_type: list[str] | None = None,
+    hf_win_lose: list[str] | None = None,
 ) -> dict[str, Any]:
     if page < 1:
         page = 1
@@ -1075,7 +1234,12 @@ def build_journal(
 
     has_cashflow_events = _has_cashflow_events(session)
     current_book_asset = get_book_asset(session)
-    cash_balance = get_cash_balance(session)
+    current_book_asset_mtm = get_book_asset_mtm(session)
+    current_book_asset_cost = get_book_asset_cost(session)
+    cash_balance_trade = get_cash_balance(session)
+    cash_balance = get_cashflow_balance(session)
+    open_position_mtm = get_open_position_mtm(session)
+    open_position_cost = get_open_position_cost(session)
     sell_event_ids = [event.id for event in events if event.type == EventType.SELL and event.id is not None]
     sell_alloc_map: dict[int, list[SellAllocation]] = defaultdict(list)
     if sell_event_ids:
@@ -1230,33 +1394,56 @@ def build_journal(
         group = trade_group_map.get(event.trade_group_id) if event.trade_group_id else None
         review_text = event.review_text if event.type == EventType.REVIEW else (group.review if group else None)
         symbol_name = symbol_names.get(event.ticker, event.ticker) if event.ticker else None
-        if event.ticker and (not symbol_name or symbol_name == event.ticker):
-            fetched_symbol_name = _get_symbol_name_from_yahoo(event.ticker, event.market)
-            if fetched_symbol_name:
-                symbol_name = fetched_symbol_name
+        if event.ticker:
+            normalized_market = _normalize_upper_optional(event.market)
+            if normalized_market == "KR":
+                # Force KR names from Naver for consistency.
+                fetched_symbol_name = _get_symbol_name_from_yahoo(event.ticker, event.market)
+                if fetched_symbol_name:
+                    symbol_name = fetched_symbol_name
+            elif _is_symbol_like_name(symbol_name, event.ticker, event.market):
+                fetched_symbol_name = _get_symbol_name_from_yahoo(event.ticker, event.market)
+                if fetched_symbol_name:
+                    symbol_name = fetched_symbol_name
         risk_snapshot = open_risk_snapshots.get(
             event.id or -1,
             {"open_risk": 0.0, "open_risk_delta": 0.0, "open_risk_delta_details": None},
         )
+        realized_pnl_local_krw = _convert_currency_amount(event.realized_pnl, base_currency, "KRW")
+        if realized_pnl_local_krw is None and _normalize_upper_optional(event.currency) == "KRW":
+            realized_pnl_local_krw = event.realized_pnl_local
         rows_all.append(
             {
                 "id": event.id,
                 "ts": event.ts,
                 "type": event.type.value,
+                "win_lose": (
+                    "W"
+                    if event.type == EventType.SELL and (event.realized_pnl or 0.0) > 1e-12
+                    else (
+                        "L"
+                        if event.type == EventType.SELL and (event.realized_pnl or 0.0) < -1e-12
+                        else ""
+                    )
+                ),
                 "ticker": event.ticker,
                 "market": event.market,
                 "exchange": event.exchange,
                 "currency": event.currency,
+                "currency_symbol": _currency_symbol(event.currency),
                 "fx_rate_to_base": event.fx_rate_to_base or 1.0,
                 "symbol_name": symbol_name,
                 "qty": event.qty,
                 "price": event.price,
+                "price_display": _format_price_for_display(event.price),
                 "fee": event.fee,
                 "sl": event.sl,
                 "tp": event.tp,
+                "sl_display": _format_sl_tp_value(event.sl),
+                "tp_display": _format_sl_tp_value(event.tp),
                 "amount": event_amount(event),
                 "realized_pnl": event.realized_pnl,
-                "realized_pnl_local": event.realized_pnl_local,
+                "realized_pnl_local": realized_pnl_local_krw,
                 "unrealized_pnl": _lookup_unrealized_pnl(
                     unrealized_by_lot_id,
                     unrealized_by_key,
@@ -1277,13 +1464,71 @@ def build_journal(
             }
         )
 
-    filtered_count = len(rows_all)
+    blank_token = "__BLANK__"
+
+    def _normalize_header_filter_values(values: list[str] | None, upper: bool = False) -> set[str]:
+        normalized: set[str] = set()
+        for raw in values or []:
+            text = str(raw or "").strip()
+            if not text:
+                continue
+            if text == blank_token:
+                normalized.add(blank_token)
+                continue
+            normalized.add(text.upper() if upper else text)
+        return normalized
+
+    def _row_filter_value(value: Any, upper: bool = False) -> str:
+        text = str(value or "").strip()
+        if text == "":
+            return blank_token
+        return text.upper() if upper else text
+
+    def _sort_filter_options(values: set[str]) -> list[str]:
+        return sorted(values, key=lambda v: (v != "", v.casefold()))
+
+    filter_options = {
+        "ticker": _sort_filter_options({str(row.get("ticker") or "").strip() for row in rows_all}),
+        "market": _sort_filter_options({str(row.get("market") or "").strip() for row in rows_all}),
+        "currency": _sort_filter_options({str(row.get("currency") or "").strip() for row in rows_all}),
+        "symbol_name": _sort_filter_options({str(row.get("symbol_name") or "").strip() for row in rows_all}),
+        "type": _sort_filter_options({str(row.get("type") or "").strip() for row in rows_all}),
+        "win_lose": _sort_filter_options({str(row.get("win_lose") or "").strip() for row in rows_all}),
+    }
+
+    selected_hf_ticker = _normalize_header_filter_values(hf_ticker, upper=True)
+    selected_hf_market = _normalize_header_filter_values(hf_market, upper=True)
+    selected_hf_currency = _normalize_header_filter_values(hf_currency, upper=True)
+    selected_hf_symbol_name = _normalize_header_filter_values(hf_symbol_name, upper=False)
+    selected_hf_type = _normalize_header_filter_values(hf_type, upper=True)
+    selected_hf_win_lose = _normalize_header_filter_values(hf_win_lose, upper=True)
+
+    rows_filtered = []
+    for row in rows_all:
+        if selected_hf_ticker and _row_filter_value(row.get("ticker"), upper=True) not in selected_hf_ticker:
+            continue
+        if selected_hf_market and _row_filter_value(row.get("market"), upper=True) not in selected_hf_market:
+            continue
+        if selected_hf_currency and _row_filter_value(row.get("currency"), upper=True) not in selected_hf_currency:
+            continue
+        if selected_hf_symbol_name and _row_filter_value(row.get("symbol_name"), upper=False) not in selected_hf_symbol_name:
+            continue
+        if selected_hf_type and _row_filter_value(row.get("type"), upper=True) not in selected_hf_type:
+            continue
+        if selected_hf_win_lose and _row_filter_value(row.get("win_lose"), upper=True) not in selected_hf_win_lose:
+            continue
+        rows_filtered.append(row)
+
+    filtered_count = len(rows_filtered)
+    event_count_ex_sl_update = sum(
+        1 for row in rows_filtered if str(row.get("type") or "").upper() != EventType.SL_UPDATE.value
+    )
     total_pages = max(1, math.ceil(filtered_count / page_size)) if filtered_count else 1
     if page > total_pages:
         page = total_pages
     start = (page - 1) * page_size
     end = start + page_size
-    rows = rows_all[start:end]
+    rows = rows_filtered[start:end]
 
     page_window_start = max(1, page - 2)
     page_window_end = min(total_pages, page + 2)
@@ -1291,8 +1536,22 @@ def build_journal(
 
     return {
         "base_currency": base_currency,
+        "base_currency_symbol": _currency_symbol(base_currency),
+        "krw_currency_symbol": _currency_symbol("KRW"),
+        "usd_currency_symbol": _currency_symbol("USD"),
         "book_asset": current_book_asset,
+        "book_asset_mtm": current_book_asset_mtm,
+        "book_asset_cost": current_book_asset_cost,
+        "book_asset_mtm_dual": _dual_currency_from_base(current_book_asset_mtm, base_currency),
+        "book_asset_cost_dual": _dual_currency_from_base(current_book_asset_cost, base_currency),
         "cash_balance": cash_balance,
+        "cash_balance_trade": cash_balance_trade,
+        "cash_balance_dual": _dual_currency_from_base(cash_balance, base_currency),
+        "open_position_mtm": open_position_mtm,
+        "open_position_mtm_dual": _dual_currency_from_base(open_position_mtm, base_currency),
+        "open_position_cost": open_position_cost,
+        "open_position_cost_dual": _dual_currency_from_base(open_position_cost, base_currency),
+        "event_count_ex_sl_update": event_count_ex_sl_update,
         "events": rows,
         "total_all_events": len(events),
         "filtered_events": filtered_count,
@@ -1311,6 +1570,15 @@ def build_journal(
             "date_from": date_from.isoformat() if date_from else "",
             "date_to": date_to.isoformat() if date_to else "",
         },
+        "header_filters": {
+            "ticker": sorted(selected_hf_ticker),
+            "market": sorted(selected_hf_market),
+            "currency": sorted(selected_hf_currency),
+            "symbol_name": sorted(selected_hf_symbol_name),
+            "type": sorted(selected_hf_type),
+            "win_lose": sorted(selected_hf_win_lose),
+        },
+        "filter_options": filter_options,
     }
 
 
@@ -1337,17 +1605,21 @@ def _quote_symbol_candidates(ticker: str, market: str | None) -> list[str]:
     if not normalized_ticker:
         return []
 
-    candidates: list[str] = [normalized_ticker]
+    candidates: list[str] = []
     normalized_market = _normalize_upper_optional(market)
     digits = "".join(ch for ch in normalized_ticker if ch.isdigit())
 
     if normalized_market == "HK":
+        if normalized_ticker.endswith(".HK"):
+            candidates.append(normalized_ticker)
         if digits:
             candidates.append(f"{digits.zfill(4)}.HK")
             candidates.append(f"{digits}.HK")
-        if "." not in normalized_ticker:
+        if "." not in normalized_ticker and not normalized_ticker.endswith(".HK"):
             candidates.append(f"{normalized_ticker}.HK")
     elif normalized_market == "KR":
+        if normalized_ticker.endswith(".KS") or normalized_ticker.endswith(".KQ"):
+            candidates.append(normalized_ticker)
         if digits:
             code = digits.zfill(6)
             candidates.append(f"{code}.KS")
@@ -1355,6 +1627,9 @@ def _quote_symbol_candidates(ticker: str, market: str | None) -> list[str]:
         if "." not in normalized_ticker:
             candidates.append(f"{normalized_ticker}.KS")
             candidates.append(f"{normalized_ticker}.KQ")
+        candidates.append(normalized_ticker)
+    else:
+        candidates.append(normalized_ticker)
 
     unique: list[str] = []
     seen: set[str] = set()
@@ -1415,7 +1690,7 @@ def _extract_symbol_name_from_payload(payload: dict[str, Any]) -> str | None:
         first = chart_results[0] if isinstance(chart_results[0], dict) else {}
         meta = first.get("meta") if isinstance(first, dict) else None
         if isinstance(meta, dict):
-            for key in ("longName", "shortName", "symbol"):
+            for key in ("longName", "shortName"):
                 value = _normalize_optional_text(meta.get(key))
                 if value:
                     return value
@@ -1440,8 +1715,146 @@ def _fetch_symbol_name_from_yahoo_symbol(symbol: str) -> str | None:
     return None
 
 
+def _fetch_symbol_name_from_naver_kr(ticker: str) -> str | None:
+    digits = "".join(ch for ch in (ticker or "") if ch.isdigit()).zfill(6)
+    if len(digits) != 6:
+        return None
+    url = f"https://finance.naver.com/item/main.naver?code={digits}"
+    req = Request(
+        url,
+        headers={
+            "User-Agent": "Mozilla/5.0",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
+        },
+    )
+    try:
+        with urlopen(req, timeout=8) as response:
+            raw = response.read()
+    except Exception:
+        return None
+
+    decoded = None
+    for encoding in ("euc-kr", "cp949", "utf-8"):
+        try:
+            decoded = raw.decode(encoding)
+            break
+        except UnicodeDecodeError:
+            continue
+    if not decoded:
+        return None
+
+    # Prefer og:title first because page layout can change.
+    m = re.search(r'property=["\']og:title["\'][^>]*content=["\']([^"\']+)["\']', decoded, re.IGNORECASE)
+    if m:
+        candidate = html.unescape(m.group(1)).strip()
+        candidate = candidate.replace(" - Npay 증권", "").replace(" - 네이버페이 증권", "")
+        candidate = candidate.split(" : ", 1)[0].strip()
+        if candidate:
+            return candidate
+
+    m2 = re.search(r'class=["\']wrap_company["\'][\s\S]*?<a[^>]*>([^<]+)</a>', decoded, re.IGNORECASE)
+    if m2:
+        candidate = html.unescape(m2.group(1)).strip()
+        if candidate:
+            return candidate
+    return None
+
+
+def _fetch_latest_quote_from_naver_kr(ticker: str) -> float | None:
+    digits = "".join(ch for ch in (ticker or "") if ch.isdigit()).zfill(6)
+    if len(digits) != 6:
+        return None
+    url = f"https://finance.naver.com/item/main.naver?code={digits}"
+    req = Request(
+        url,
+        headers={
+            "User-Agent": "Mozilla/5.0",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
+        },
+    )
+    try:
+        with urlopen(req, timeout=8) as response:
+            raw = response.read()
+    except Exception:
+        return None
+
+    decoded = None
+    for encoding in ("euc-kr", "cp949", "utf-8"):
+        try:
+            decoded = raw.decode(encoding)
+            break
+        except UnicodeDecodeError:
+            continue
+    if not decoded:
+        return None
+
+    m = re.search(
+        r'class=["\']no_today["\'][\s\S]*?<span class=["\']blind["\']>([0-9,]+)</span>',
+        decoded,
+        re.IGNORECASE,
+    )
+    if not m:
+        return None
+    numeric = m.group(1).replace(",", "").strip()
+    return _parse_positive_float(numeric)
+
+
+def _is_symbol_like_name(name: str | None, ticker: str | None, market: str | None) -> bool:
+    n = (name or "").strip()
+    t = (ticker or "").strip().upper()
+    if not n:
+        return True
+    if not t:
+        return False
+    nu = n.upper()
+    if nu == t:
+        return True
+    digits = "".join(ch for ch in t if ch.isdigit()).zfill(6)
+    symbol_candidates = {
+        t,
+        f"{digits}.KS",
+        f"{digits}.KQ",
+        f"{digits.zfill(4)}.HK",
+        f"{digits}.HK",
+    }
+    if nu in symbol_candidates:
+        return True
+    if _normalize_upper_optional(market) == "KR" and ("NPAY 증권" in nu or "네이버페이 증권" in n):
+        return True
+    return False
+
+
+def _should_use_naver_kr_source(ticker: str, market: str | None) -> bool:
+    normalized_ticker = (ticker or "").strip().upper()
+    normalized_market = _normalize_upper_optional(market)
+    if normalized_market == "KR":
+        return True
+    if normalized_ticker.endswith(".KS") or normalized_ticker.endswith(".KQ"):
+        return True
+    if normalized_market is None and re.fullmatch(r"\d{6}", normalized_ticker):
+        return True
+    return False
+
+
 def _get_symbol_name_from_yahoo(ticker: str, market: str | None) -> str | None:
     now_ts = datetime.utcnow().timestamp()
+    normalized_ticker = (ticker or "").strip().upper()
+
+    if _should_use_naver_kr_source(normalized_ticker, market):
+        naver_cache_key = f"NAVER:{normalized_ticker}"
+        cached_naver = _name_cache.get(naver_cache_key)
+        if cached_naver and now_ts - cached_naver["fetched_at"] < NAME_CACHE_TTL_SECONDS:
+            return cached_naver["name"]
+        naver_name = _fetch_symbol_name_from_naver_kr(normalized_ticker)
+        if naver_name:
+            _name_cache[naver_cache_key] = {"fetched_at": now_ts, "name": naver_name}
+            return naver_name
+        if _normalize_upper_optional(market) == "KR":
+            # Explicit KR market must use Naver as the source of truth for names.
+            return None
+
     for symbol in _quote_symbol_candidates(ticker, market):
         cached = _name_cache.get(symbol)
         if cached and now_ts - cached["fetched_at"] < NAME_CACHE_TTL_SECONDS:
@@ -1449,6 +1862,10 @@ def _get_symbol_name_from_yahoo(ticker: str, market: str | None) -> str | None:
 
         fetched_name = _fetch_symbol_name_from_yahoo_symbol(symbol)
         if not fetched_name:
+            continue
+        normalized_name = fetched_name.strip().upper()
+        if normalized_name in {symbol.strip().upper(), normalized_ticker}:
+            # Symbol-like value is not a human-readable company name; keep trying.
             continue
         _name_cache[symbol] = {"fetched_at": now_ts, "name": fetched_name}
         return fetched_name
@@ -1516,6 +1933,18 @@ def _fetch_latest_quote_from_yfinance_symbol(symbol: str) -> float | None:
 
 def _get_latest_quote_price(ticker: str, market: str | None) -> float | None:
     now_ts = datetime.utcnow().timestamp()
+    normalized_ticker = (ticker or "").strip().upper()
+
+    if _should_use_naver_kr_source(normalized_ticker, market):
+        naver_price_key = f"NAVER_PRICE:{normalized_ticker}"
+        cached_naver = _quote_cache.get(naver_price_key)
+        if cached_naver and now_ts - cached_naver["fetched_at"] < QUOTE_CACHE_TTL_SECONDS:
+            return cached_naver["price"]
+        naver_price = _fetch_latest_quote_from_naver_kr(normalized_ticker)
+        if naver_price is not None:
+            _quote_cache[naver_price_key] = {"fetched_at": now_ts, "price": naver_price}
+            return naver_price
+
     for symbol in _quote_symbol_candidates(ticker, market):
         cached = _quote_cache.get(symbol)
         if cached and now_ts - cached["fetched_at"] < QUOTE_CACHE_TTL_SECONDS:
@@ -1527,6 +1956,29 @@ def _get_latest_quote_price(ticker: str, market: str | None) -> float | None:
         _quote_cache[symbol] = {"fetched_at": now_ts, "price": latest_price}
         return latest_price
     return None
+
+
+def _current_open_market_value(session: Session) -> float:
+    lots = session.exec(select(Lot).where(Lot.qty_open > 0)).all()
+    if not lots:
+        return 0.0
+
+    by_key: dict[tuple[str, str | None], list[Lot]] = defaultdict(list)
+    for lot in lots:
+        ticker = (lot.ticker or "").strip().upper()
+        if not ticker:
+            continue
+        by_key[(ticker, _normalize_upper_optional(lot.market))].append(lot)
+
+    total_value = 0.0
+    for (ticker, market), key_lots in by_key.items():
+        latest_price = _get_latest_quote_price(ticker, market)
+        for lot in key_lots:
+            qty_open = lot.qty_open or 0.0
+            fx_rate = lot.fx_rate_to_base or 1.0
+            price_for_value = latest_price if latest_price is not None else (lot.entry_price or 0.0)
+            total_value += price_for_value * qty_open * fx_rate
+    return total_value
 
 
 def _build_open_unrealized_pnl_maps(
@@ -1811,7 +2263,7 @@ def _build_period_stats(timeline: list[dict[str, Any]], granularity: str) -> lis
         asset_end = row["asset_end"]
         profit_amount = asset_end - asset_start + row["withdraw_sum"] - row["deposit_sum"]
 
-        if abs(asset_start) > 1e-12:
+        if abs(asset_start) > RETURN_DENOMINATOR_MIN_BASE:
             return_method1_pct = profit_amount / asset_start * 100
         else:
             return_method1_pct = None
@@ -1819,7 +2271,7 @@ def _build_period_stats(timeline: list[dict[str, Any]], granularity: str) -> lis
         weighted_capital_base = (
             asset_start + row["weighted_deposit_sum"] - row["weighted_withdraw_sum"]
         )
-        if abs(weighted_capital_base) > 1e-12:
+        if abs(weighted_capital_base) > RETURN_DENOMINATOR_MIN_BASE:
             return_method2_pct = profit_amount / weighted_capital_base * 100
         else:
             return_method2_pct = None
@@ -1864,9 +2316,109 @@ def _build_period_stats(timeline: list[dict[str, Any]], granularity: str) -> lis
     return stats
 
 
+def _build_closed_trade_rows(session: Session, closed_sell_events: list[Event]) -> list[dict[str, Any]]:
+    sell_event_ids = [event.id for event in closed_sell_events if event.id is not None]
+    if not sell_event_ids:
+        return []
+
+    allocs = session.exec(
+        select(SellAllocation)
+        .where(SellAllocation.sell_event_id.in_(sell_event_ids))
+        .order_by(SellAllocation.sell_event_id.asc(), SellAllocation.id.asc())
+    ).all()
+    allocs_by_event: dict[int, list[SellAllocation]] = defaultdict(list)
+    lot_ids: set[int] = set()
+    for alloc in allocs:
+        allocs_by_event[alloc.sell_event_id].append(alloc)
+        lot_ids.add(alloc.lot_id)
+
+    lot_map: dict[int, Lot] = {}
+    if lot_ids:
+        lots = session.exec(select(Lot).where(Lot.id.in_(list(lot_ids)))).all()
+        lot_map = {lot.id: lot for lot in lots if lot.id is not None}
+
+    rows: list[dict[str, Any]] = []
+    for event in closed_sell_events:
+        if event.id is None:
+            continue
+        realized = event.realized_pnl
+        if realized is None:
+            continue
+        try:
+            realized_value = float(realized)
+        except (TypeError, ValueError):
+            continue
+        if not math.isfinite(realized_value):
+            continue
+
+        event_allocs = allocs_by_event.get(event.id, [])
+        qty_sold = 0.0
+        cost_basis_base = 0.0
+        for alloc in event_allocs:
+            lot = lot_map.get(alloc.lot_id)
+            if lot is None:
+                continue
+            qty = float(alloc.qty_sold or 0.0)
+            if qty <= 0:
+                continue
+            qty_sold += qty
+            lot_fx = lot.fx_rate_to_base if (lot.fx_rate_to_base and lot.fx_rate_to_base > 0) else (event.fx_rate_to_base or 1.0)
+            cost_basis_base += _to_base((lot.entry_price or 0.0) * qty, lot_fx)
+
+        return_pct = (realized_value / cost_basis_base * 100.0) if cost_basis_base > 1e-12 else None
+        rows.append(
+            {
+                "event_id": event.id,
+                "ts": event.ts.isoformat(),
+                "ticker": event.ticker,
+                "market": event.market,
+                "currency": event.currency,
+                "qty_sold": qty_sold,
+                "cost_basis_base": cost_basis_base,
+                "realized_pnl": realized_value,
+                "return_pct": return_pct,
+            }
+        )
+
+    return rows
+
+
 def build_stats(session: Session) -> dict[str, Any]:
     timeline = _build_event_timeline(session)
     base_currency = _get_base_currency(session)
+    closed_sell_events = session.exec(
+        select(Event)
+        .where(Event.type == EventType.SELL)
+        .order_by(Event.ts.asc(), Event.id.asc())
+    ).all()
+    closed_trade_rows = _build_closed_trade_rows(session, closed_sell_events)
+    closed_trade_pnls = [
+        {
+            "event_id": row["event_id"],
+            "ts": row["ts"],
+            "ticker": row["ticker"],
+            "market": row["market"],
+            "currency": row["currency"],
+            "realized_pnl": row["realized_pnl"],
+            "cost_basis_base": row["cost_basis_base"],
+            "return_pct": row["return_pct"],
+        }
+        for row in closed_trade_rows
+    ]
+    closed_trade_returns = [
+        {
+            "event_id": row["event_id"],
+            "ts": row["ts"],
+            "ticker": row["ticker"],
+            "market": row["market"],
+            "currency": row["currency"],
+            "return_pct": row["return_pct"],
+            "realized_pnl": row["realized_pnl"],
+            "cost_basis_base": row["cost_basis_base"],
+        }
+        for row in closed_trade_rows
+        if row["return_pct"] is not None and math.isfinite(float(row["return_pct"]))
+    ]
     used_currencies = {base_currency}
     for value in session.exec(select(Event.currency)).all():
         normalized = _normalize_upper_optional(value)
@@ -1879,15 +2431,19 @@ def build_stats(session: Session) -> dict[str, Any]:
 
     return {
         "base_currency": base_currency,
+        "base_currency_symbol": _currency_symbol(base_currency),
         "currencies": sorted(used_currencies),
         "benchmark_symbols": list(BENCHMARK_SYMBOLS),
+        "closed_trade_pnls": closed_trade_pnls,
+        "closed_trade_returns": closed_trade_returns,
         "definitions": {
             "trade_count": "BUY + SELL event count",
             "win_rate_pct": "Winning SELL ratio excluding breakeven (BE) sells",
-            "be_rate_pct": f"Breakeven SELL ratio; BE is reason-tagged (BE/breakeven/본절...) or |realized_pnl| <= {WIN_RATE_BREAKEVEN_EPSILON_USD:.2f} {base_currency}",
+            "be_rate_pct": f"Breakeven SELL ratio; BE is reason-tagged (BE/breakeven/蹂몄젅...) or |realized_pnl| <= {WIN_RATE_BREAKEVEN_EPSILON_USD:.2f} {base_currency}",
             "mdd_pct": "Maximum drawdown (%) on period book-asset curve",
-            "return_method1_pct": "((asset_end - asset_start + withdraw_sum - deposit_sum) / asset_start) * 100",
-            "return_method2_pct": "((asset_end - asset_start + withdraw_sum - deposit_sum) / (asset_start + weighted_deposit_sum - weighted_withdraw_sum)) * 100",
+            "return_method1_pct": f"((asset_end - asset_start + withdraw_sum - deposit_sum) / asset_start) * 100; hidden when |asset_start| <= {RETURN_DENOMINATOR_MIN_BASE:.0f} {base_currency}",
+            "return_method2_pct": f"((asset_end - asset_start + withdraw_sum - deposit_sum) / (asset_start + weighted_deposit_sum - weighted_withdraw_sum)) * 100; hidden when denominator <= {RETURN_DENOMINATOR_MIN_BASE:.0f} {base_currency}",
+            "closed_trade_return_pct": "Per closed SELL: realized_pnl / allocated cost basis * 100",
         },
         "current": {
             "daily": daily[0] if daily else None,
@@ -1899,25 +2455,69 @@ def build_stats(session: Session) -> dict[str, Any]:
         "weekly": weekly[:52],
         "monthly": monthly[:36],
         "yearly": yearly[:15],
-    }
+}
+
+
+def _fetch_benchmark_prices_from_yahoo_chart(symbol: str) -> tuple[list[date], list[float]]:
+    period2 = int(datetime.utcnow().timestamp())
+    url = (
+        "https://query1.finance.yahoo.com/v8/finance/chart/"
+        f"{quote(symbol)}?interval=1d&period1=0&period2={period2}&events=history&includeAdjustedClose=true"
+    )
+    req = Request(url, headers={"User-Agent": "Mozilla/5.0"})
+
+    try:
+        with urlopen(req, timeout=12) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Failed to fetch benchmark data for {symbol}") from exc
+
+    chart = payload.get("chart") if isinstance(payload, dict) else None
+    results = chart.get("result") if isinstance(chart, dict) else None
+    if not isinstance(results, list) or not results:
+        raise HTTPException(status_code=502, detail=f"No benchmark data available for {symbol}")
+
+    result = results[0] if isinstance(results[0], dict) else {}
+    timestamps = result.get("timestamp") if isinstance(result, dict) else None
+    indicators = result.get("indicators") if isinstance(result, dict) else None
+    quotes = indicators.get("quote") if isinstance(indicators, dict) else None
+    quote0 = quotes[0] if isinstance(quotes, list) and quotes else {}
+    closes = quote0.get("close") if isinstance(quote0, dict) else None
+
+    if not isinstance(timestamps, list) or not isinstance(closes, list):
+        raise HTTPException(status_code=502, detail=f"No benchmark data available for {symbol}")
+
+    rows: list[tuple[date, float]] = []
+    for ts_value, close_value in zip(timestamps, closes):
+        try:
+            ts_int = int(ts_value)
+            close = float(close_value)
+        except (TypeError, ValueError):
+            continue
+        if not math.isfinite(close):
+            continue
+        rows.append((datetime.utcfromtimestamp(ts_int).date(), close))
+
+    if not rows:
+        raise HTTPException(status_code=502, detail=f"No valid close prices for {symbol}")
+
+    rows.sort(key=lambda x: x[0])
+    return [r[0] for r in rows], [r[1] for r in rows]
 
 
 def _fetch_benchmark_prices_from_yfinance(symbol: str) -> tuple[list[date], list[float]]:
     try:
         import yfinance as yf
-    except ModuleNotFoundError as exc:
-        raise HTTPException(
-            status_code=500,
-            detail="yfinance is required for benchmark data. Install with `poetry add yfinance`.",
-        ) from exc
+    except ModuleNotFoundError:
+        return _fetch_benchmark_prices_from_yahoo_chart(symbol)
 
     try:
         hist = yf.Ticker(symbol).history(period="max", interval="1d", auto_adjust=False)
-    except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Failed to fetch benchmark data for {symbol}") from exc
+    except Exception:
+        return _fetch_benchmark_prices_from_yahoo_chart(symbol)
 
     if hist is None or hist.empty or "Close" not in hist.columns:
-        raise HTTPException(status_code=502, detail=f"No benchmark data available for {symbol}")
+        return _fetch_benchmark_prices_from_yahoo_chart(symbol)
 
     rows: list[tuple[date, float]] = []
     closes = hist["Close"].dropna()
@@ -1932,7 +2532,7 @@ def _fetch_benchmark_prices_from_yfinance(symbol: str) -> tuple[list[date], list
         rows.append((d, close))
 
     if not rows:
-        raise HTTPException(status_code=502, detail=f"No valid close prices for {symbol}")
+        return _fetch_benchmark_prices_from_yahoo_chart(symbol)
 
     rows.sort(key=lambda x: x[0])
     return [r[0] for r in rows], [r[1] for r in rows]
@@ -1969,7 +2569,9 @@ def _calc_benchmark_period_returns(
     for row in period_rows:
         period_start = date.fromisoformat(row["period_start"])
         period_end = date.fromisoformat(row["period_end"])
-        start_close = _last_close_on_or_before(dates, closes, period_start)
+        # Use the close prior to period start as denominator so daily returns are meaningful.
+        start_ref = period_start - timedelta(days=1)
+        start_close = _last_close_on_or_before(dates, closes, start_ref)
         end_close = _last_close_on_or_before(dates, closes, period_end)
         if start_close is None or end_close is None or abs(start_close) < 1e-12:
             return_pct = None
@@ -2002,7 +2604,7 @@ def _calc_benchmark_period_returns(
     return output
 
 
-def build_benchmark_returns(session: Session, symbol: str) -> dict[str, Any]:
+def build_benchmark_returns(session: Session, symbol: str, stats: dict[str, Any] | None = None) -> dict[str, Any]:
     normalized = symbol.strip().upper()
     if normalized not in BENCHMARK_SYMBOLS:
         raise HTTPException(
@@ -2010,14 +2612,16 @@ def build_benchmark_returns(session: Session, symbol: str) -> dict[str, Any]:
             detail=f"symbol must be one of {', '.join(BENCHMARK_SYMBOLS)}",
         )
 
-    stats = build_stats(session)
-    dates, closes = _get_benchmark_prices(normalized)
+    stats_payload = stats if stats is not None else build_stats(session)
+    source_symbol = BENCHMARK_YF_SYMBOL_MAP.get(normalized, normalized)
+    dates, closes = _get_benchmark_prices(source_symbol)
     return {
         "symbol": normalized,
-        "daily": _calc_benchmark_period_returns(stats["daily"], dates, closes),
-        "weekly": _calc_benchmark_period_returns(stats["weekly"], dates, closes),
-        "monthly": _calc_benchmark_period_returns(stats["monthly"], dates, closes),
-        "yearly": _calc_benchmark_period_returns(stats["yearly"], dates, closes),
+        "source_symbol": source_symbol,
+        "daily": _calc_benchmark_period_returns(stats_payload["daily"], dates, closes),
+        "weekly": _calc_benchmark_period_returns(stats_payload["weekly"], dates, closes),
+        "monthly": _calc_benchmark_period_returns(stats_payload["monthly"], dates, closes),
+        "yearly": _calc_benchmark_period_returns(stats_payload["yearly"], dates, closes),
     }
 
 

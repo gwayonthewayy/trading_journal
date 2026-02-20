@@ -48,6 +48,9 @@
     <h3>Portfolio by Ticker</h3>
     <p>Expand each row to see lot-level details.</p>
   </div>
+  {% if can_write %}
+  <p class="small">Tip: In lot details, double-click `Entry/SL/TP/Reason/Note` to edit and press Enter to save.</p>
+  {% endif %}
 
   <div class="table-wrap">
     <table id="portfolio-table">
@@ -82,8 +85,8 @@
           <th>SL/TP</th>
           <th>Cost Amount</th>
           <th>Open Risk</th>
-          <th>Risk % (Total Cost)</th>
           <th>Open Risk % (Position)</th>
+          <th>Risk % (Total Cost)</th>
         </tr>
       </thead>
       <tbody>
@@ -107,8 +110,8 @@
           <td>{{ row.sl_tp }}</td>
           <td>{{ data.base_currency_symbol }}{{ "{:,.2f}".format(row.amount_cost) }}</td>
           <td>{{ data.base_currency_symbol }}{{ "{:,.2f}".format(row.open_risk) }}</td>
-          <td>{{ "%.2f"|format(row.open_risk_total_cost_pct) }}%</td>
           <td>{{ "%.2f"|format(row.open_risk_pct) }}%</td>
+          <td>{{ "%.2f"|format(row.open_risk_total_cost_pct) }}%</td>
         </tr>
         <tr class="portfolio-row-detail" data-filter-group="{{ loop.index }}">
           <td colspan="11">
@@ -125,8 +128,8 @@
                       <th>SL</th>
                       <th>TP</th>
                       <th>Buy Fee</th>
-                      <th>Reason</th>
-                      <th>Note</th>
+                      <th class="col-lot-reason">Reason</th>
+                      <th class="col-lot-note">Note</th>
                       <th>Open Risk</th>
                       {% if can_write %}
                       <th>Set SL/TP</th>
@@ -135,17 +138,26 @@
                   </thead>
                   <tbody>
                     {% for lot in row.lots %}
-                    <tr>
+                    <tr
+                      class="portfolio-lot-row"
+                      data-lot-id="{{ lot.lot_id }}"
+                      data-buy-event-id="{{ lot.buy_event_id or '' }}"
+                      data-entry-price="{{ lot.entry_price }}"
+                      data-sl="{{ lot.sl if lot.sl is not none else '' }}"
+                      data-tp="{{ lot.tp if lot.tp is not none else '' }}"
+                      data-buy-reason="{{ lot.buy_reason or '' }}"
+                      data-note="{{ lot.note or '' }}"
+                    >
                       <td>{{ lot.lot_id }}</td>
                       <td>{{ lot.opened_at }}</td>
                       <td>{{ "{:,.4f}".format(lot.qty_open) }}</td>
                       {% set lot_currency_symbol = "$" if lot.currency == "USD" else "₩" if lot.currency == "KRW" else "HK$" if lot.currency == "HKD" else "" %}
-                      <td>{{ lot_currency_symbol }}{{ "{:,.4f}".format(lot.entry_price) }}</td>
-                      <td>{{ lot.sl_display }}</td>
-                      <td>{{ lot.tp_display }}</td>
+                      <td class="inline-editable" data-inline-portfolio-field="entry_price">{{ lot_currency_symbol }}{{ "{:,.4f}".format(lot.entry_price) }}</td>
+                      <td class="inline-editable" data-inline-portfolio-field="sl">{{ lot.sl_display }}</td>
+                      <td class="inline-editable" data-inline-portfolio-field="tp">{{ lot.tp_display }}</td>
                       <td>{{ data.base_currency_symbol }}{{ "{:,.2f}".format(lot.buy_fee) }}</td>
-                      <td>{{ lot.buy_reason or "" }}</td>
-                      <td>{{ lot.note or "" }}</td>
+                      <td class="inline-editable col-lot-reason" data-inline-portfolio-field="buy_reason">{{ lot.buy_reason or "" }}</td>
+                      <td class="inline-editable col-lot-note" data-inline-portfolio-field="note">{{ lot.note or "" }}</td>
                       <td>{{ data.base_currency_symbol }}{{ "{:,.2f}".format(lot.open_risk) }}</td>
                       {% if can_write %}
                       <td>
@@ -176,6 +188,45 @@
                   </tbody>
                 </table>
               </div>
+
+              <div class="table-wrap" style="margin-top: 8px;">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Sell Lot</th>
+                      <th>Sell TS</th>
+                      <th>Qty</th>
+                      <th>Price</th>
+                      <th>Fee</th>
+                      <th>Realized PnL</th>
+                      <th class="col-sell-alloc">Allocated BUY Lots</th>
+                      <th>Reason</th>
+                      <th>Note</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% if row.sell_events %}
+                      {% for s in row.sell_events %}
+                      <tr>
+                        <td>{{ s.sell_lot_label or ("sell#" ~ s.event_id) }}</td>
+                        <td>{{ s.ts }}</td>
+                        <td>{{ "{:,.4f}".format(s.qty) if s.qty is not none else "" }}</td>
+                        <td>{{ s.currency_symbol }}{{ s.price_display if s.price is not none else "" }}</td>
+                        <td>{{ data.base_currency_symbol }}{{ "{:,.2f}".format(s.fee) if s.fee is not none else "" }}</td>
+                        <td>{{ data.base_currency_symbol }}{{ "{:,.2f}".format(s.realized_pnl) if s.realized_pnl is not none else "" }}</td>
+                        <td class="col-sell-alloc">{{ s.allocation_text or "-" }}</td>
+                        <td>{{ s.reason or "" }}</td>
+                        <td>{{ s.note or "" }}</td>
+                      </tr>
+                      {% endfor %}
+                    {% else %}
+                    <tr>
+                      <td colspan="9" class="small">No sell events</td>
+                    </tr>
+                    {% endif %}
+                  </tbody>
+                </table>
+              </div>
             </details>
           </td>
         </tr>
@@ -190,8 +241,8 @@
           <th></th>
           <th>{{ data.base_currency_symbol }}{{ "{:,.2f}".format(data.totals.amount_cost) }}</th>
           <th>{{ data.base_currency_symbol }}{{ "{:,.2f}".format(data.totals.open_risk) }}</th>
-          <th>{{ "%.2f"|format(data.totals.open_risk_total_cost_pct) }}%</th>
           <th>{{ "%.2f"|format(data.totals.open_risk_pct) }}%</th>
+          <th>{{ "%.2f"|format(data.totals.open_risk_total_cost_pct) }}%</th>
         </tr>
       </tbody>
     </table>
@@ -434,6 +485,94 @@
     }
     return res.json();
   }
+
+  async function patchJson(url, payload) {
+    const res = await fetch(url, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      let detail = `HTTP ${res.status}`;
+      try {
+        const body = await res.json();
+        if (body && body.detail) detail = String(body.detail);
+      } catch (_) {}
+      throw new Error(detail);
+    }
+    return res.json();
+  }
+
+  const inlineLotFieldLabel = {
+    entry_price: "Entry Price",
+    sl: "SL",
+    tp: "TP",
+    buy_reason: "Reason",
+    note: "Note",
+  };
+
+  function readLotInlineCurrentValue(lotRow, field) {
+    if (!lotRow) return "";
+    if (field === "entry_price") return String(lotRow.dataset.entryPrice || "");
+    if (field === "sl") return String(lotRow.dataset.sl || "");
+    if (field === "tp") return String(lotRow.dataset.tp || "");
+    if (field === "buy_reason") return String(lotRow.dataset.buyReason || "");
+    if (field === "note") return String(lotRow.dataset.note || "");
+    return "";
+  }
+
+  function parseInlineNumber(raw, label, minExclusive = false) {
+    const text = String(raw || "").trim().replace(/,/g, "");
+    if (!text) throw new Error(`${label} cannot be empty`);
+    const num = Number(text);
+    if (!Number.isFinite(num)) throw new Error(`${label} must be a valid number`);
+    if (minExclusive && num <= 0) throw new Error(`${label} must be > 0`);
+    if (!minExclusive && num < 0) throw new Error(`${label} must be >= 0`);
+    return num;
+  }
+
+  portfolioTable?.addEventListener("dblclick", async (e) => {
+    const cell = e.target?.closest ? e.target.closest("[data-inline-portfolio-field]") : null;
+    if (!cell) return;
+
+    const lotRow = cell.closest("tr.portfolio-lot-row");
+    if (!lotRow) return;
+
+    const lotId = Number(lotRow.dataset.lotId || "");
+    const buyEventId = Number(lotRow.dataset.buyEventId || "");
+    const field = String(cell.dataset.inlinePortfolioField || "");
+    const label = inlineLotFieldLabel[field] || field;
+    if (!lotId || !field) return;
+
+    const currentValue = readLotInlineCurrentValue(lotRow, field);
+    const edited = window.prompt(`${label} (press Enter to save)`, currentValue);
+    if (edited === null) return;
+
+    try {
+      if (field === "sl" || field === "tp") {
+        const next = parseInlineNumber(edited, label, false);
+        await postJson("/api/lot/sl", {
+          lot_id: lotId,
+          ...(field === "sl" ? { new_sl: next } : { new_tp: next }),
+        });
+      } else if (field === "entry_price") {
+        if (!buyEventId) throw new Error("linked BUY event not found");
+        const next = parseInlineNumber(edited, label, true);
+        await patchJson(`/api/events/${buyEventId}`, { price: next });
+      } else if (field === "buy_reason") {
+        if (!buyEventId) throw new Error("linked BUY event not found");
+        const next = String(edited || "").trim();
+        await patchJson(`/api/events/${buyEventId}`, { reason: next || null });
+      } else if (field === "note") {
+        if (!buyEventId) throw new Error("linked BUY event not found");
+        const next = String(edited || "").trim();
+        await patchJson(`/api/events/${buyEventId}`, { note: next || null });
+      }
+      window.location.reload();
+    } catch (err) {
+      window.alert(`Inline edit failed: ${err.message}`);
+    }
+  });
 
   document.querySelectorAll(".lot-edit-controls").forEach((wrap) => {
     const lotId = Number(wrap.dataset.lotId || "");

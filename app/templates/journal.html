@@ -325,20 +325,20 @@
     <table id="journal-table">
       <thead>
         <tr>
-          <th>TS</th>
-          <th class="th-filterable" data-table-filter-key="ticker" data-table-filter-label="Ticker">
+          <th class="col-ts">TS</th>
+          <th class="th-filterable col-ticker" data-table-filter-key="ticker" data-table-filter-label="Ticker">
             <span class="th-filter-head">
               <span class="th-filter-title">Ticker</span>
               <button type="button" class="th-filter-btn" aria-label="Filter Ticker" title="Filter Ticker">▾</button>
             </span>
           </th>
-          <th class="th-filterable" data-table-filter-key="market" data-table-filter-label="Market">
+          <th class="th-filterable col-market" data-table-filter-key="market" data-table-filter-label="Market">
             <span class="th-filter-head">
               <span class="th-filter-title">Market</span>
               <button type="button" class="th-filter-btn" aria-label="Filter Market" title="Filter Market">▾</button>
             </span>
           </th>
-          <th class="th-filterable" data-table-filter-key="currency" data-table-filter-label="Currency">
+          <th class="th-filterable col-currency" data-table-filter-key="currency" data-table-filter-label="Currency">
             <span class="th-filter-head">
               <span class="th-filter-title">Currency</span>
               <button type="button" class="th-filter-btn" aria-label="Filter Currency" title="Filter Currency">▾</button>
@@ -371,9 +371,10 @@
           <th>Realized PnL (Local)</th>
           <th>Open Risk</th>
           <th class="col-reason-note">Reason / Note</th>
-          <th>Review</th>
-          <th>Image</th>
-          <th>Actions</th>
+          <th class="col-trade-group">Trade Group</th>
+          <th class="col-review">Review</th>
+          <th class="col-image">Image</th>
+          <th class="col-actions">Actions</th>
         </tr>
       </thead>
       <tbody id="journal-tbody">
@@ -399,12 +400,14 @@
           data-event-reason="{{ e.reason or '' }}"
           data-event-note="{{ e.note or '' }}"
           data-event-image-url="{{ e.image_url or '' }}"
+          data-event-image-urls='{{ e.image_urls | tojson }}'
           data-event-review="{{ e.review or '' }}"
+          data-event-trade-group-id="{{ e.trade_group_id if e.trade_group_id is not none else '' }}"
         >
-          <td>{{ e.ts }}</td>
-          <td>{{ e.ticker or "" }}</td>
-          <td>{{ e.market or "" }}</td>
-          <td>{{ e.currency or "" }}</td>
+          <td class="inline-editable col-ts" data-inline-field="ts">{{ e.ts }}</td>
+          <td class="col-ticker{% if e.type in ['BUY', 'SELL'] %} inline-editable{% endif %}" {% if e.type in ["BUY", "SELL"] %}data-inline-field="ticker"{% endif %}>{{ e.ticker or "" }}</td>
+          <td class="inline-editable col-market" data-inline-field="market">{{ e.market or "" }}</td>
+          <td class="inline-editable col-currency" data-inline-field="currency">{{ e.currency or "" }}</td>
           <td>{{ e.symbol_name or "" }}</td>
           <td>
             {% set type_class = e.type|lower|replace("_", "-") %}
@@ -417,10 +420,14 @@
             <span class="wl-lose">L</span>
             {% endif %}
           </td>
-          <td>{{ "{:,.4f}".format(e.qty) if e.qty is not none else "" }}</td>
-          <td>{{ e.currency_symbol }}{{ e.price_display if e.price is not none else "" }}</td>
-          <td>{{ e.sl_display if e.sl is not none else "" }} / {{ e.tp_display if e.tp is not none else "" }}</td>
-          <td>{{ data.base_currency_symbol }}{{ "{:,.2f}".format(e.amount) if e.amount is not none else "" }}</td>
+          <td {% if e.type == "BUY" %}class="inline-editable" data-inline-field="qty"{% endif %}>{{ "{:,.4f}".format(e.qty) if e.qty is not none else "" }}</td>
+          <td {% if e.type in ["BUY", "SELL"] %}class="inline-editable" data-inline-field="price"{% endif %}>{{ e.currency_symbol }}{{ e.price_display if e.price is not none else "" }}</td>
+          <td>
+            <span {% if e.type in ["BUY", "SL_UPDATE"] %}class="inline-editable inline-edit-token" data-inline-field="sl"{% endif %}>{{ e.sl_display if e.sl is not none else "" }}</span>
+            /
+            <span {% if e.type in ["BUY", "SL_UPDATE"] %}class="inline-editable inline-edit-token" data-inline-field="tp"{% endif %}>{{ e.tp_display if e.tp is not none else "" }}</span>
+          </td>
+          <td {% if e.type == "CASHFLOW" %}class="inline-editable" data-inline-field="cash_amount"{% endif %}>{{ data.base_currency_symbol }}{{ "{:,.2f}".format(e.amount) if e.amount is not none else "" }}</td>
           <td>{{ data.base_currency_symbol }}{{ "{:,.2f}".format(e.unrealized_pnl) if e.unrealized_pnl is not none else "" }}</td>
           <td>{{ data.base_currency_symbol }}{{ "{:,.2f}".format(e.realized_pnl) if e.realized_pnl is not none else "" }}</td>
           <td>{{ data.krw_currency_symbol }}{{ "{:,.0f}".format(e.realized_pnl_local) if e.realized_pnl_local is not none else "" }}</td>
@@ -439,23 +446,47 @@
             {% endif %}
           </td>
           <td class="col-reason-note">
-            <div>{{ e.reason or "" }}</div>
-            <div class="small">{{ e.note or "" }}</div>
+            <div class="inline-editable" data-inline-field="reason">{{ e.reason or "" }}</div>
+            <div class="small inline-editable" data-inline-field="note">{{ e.note or "" }}</div>
           </td>
-          <td>
+          <td class="inline-editable col-trade-group" data-inline-field="trade_group_id">
             {% if e.trade_group_id %}
               <a href="/trades/{{ e.trade_group_id }}">trade#{{ e.trade_group_id }}</a>
+            {% else %}
+              <span class="small">-</span>
             {% endif %}
+          </td>
+          <td class="inline-editable col-review" data-inline-field="review">
             <div class="small">{{ e.review or "" }}</div>
           </td>
-          <td>
-            {% if e.image_url %}
-              <a href="{{ e.image_url }}" target="_blank" rel="noreferrer">
-                <img src="{{ e.image_url }}" alt="event image" style="max-width:72px; max-height:72px; object-fit:cover; border-radius:8px;" />
-              </a>
+          <td class="event-image-cell col-image">
+            {% set image_urls = e.image_urls if e.image_urls is defined else ((e.image_url or '').splitlines()) %}
+            <div class="event-image-list">
+              {% for img in image_urls %}
+                {% set img_url = img.strip() %}
+                {% if img_url %}
+                <div class="event-image-item">
+                  <a href="{{ img_url }}" target="_blank" rel="noreferrer">
+                    <img src="{{ img_url }}" alt="event image" style="max-width:72px; max-height:72px; object-fit:cover; border-radius:8px;" />
+                  </a>
+                  {% if can_write %}
+                    <button
+                      type="button"
+                      class="secondary event-image-delete"
+                      data-event-id="{{ e.id }}"
+                      data-image-url="{{ img_url }}"
+                      aria-label="Delete image"
+                    >x</button>
+                  {% endif %}
+                </div>
+                {% endif %}
+              {% endfor %}
+            </div>
+            {% if can_write %}
+              <button type="button" class="secondary event-image-menu" data-event-id="{{ e.id }}">Image</button>
             {% endif %}
           </td>
-          <td>
+          <td class="col-actions">
             {% if can_write %}
               <button type="button" class="secondary event-attach-image" data-event-id="{{ e.id }}">Attach</button>
               <button type="button" class="secondary event-edit" data-event-id="{{ e.id }}">Edit</button>
@@ -484,11 +515,17 @@
         <div><span class="small">Realized PnL</span><div>{{ data.base_currency_symbol }}{{ "{:,.2f}".format(e.realized_pnl) if e.realized_pnl is not none else "" }}</div></div>
         <div><span class="small">Reason</span><div>{{ e.reason or "" }}</div></div>
       </div>
-      {% if e.image_url %}
-      <div style="margin-top:8px;">
-        <a href="{{ e.image_url }}" target="_blank" rel="noreferrer">
-          <img src="{{ e.image_url }}" alt="event image" style="max-width:100%; max-height:180px; object-fit:cover; border-radius:8px;" />
-        </a>
+      {% set mobile_image_urls = e.image_urls if e.image_urls is defined else ((e.image_url or '').splitlines()) %}
+      {% if mobile_image_urls %}
+      <div style="margin-top:8px; display:grid; gap:8px;">
+        {% for img in mobile_image_urls %}
+          {% set img_url = img.strip() %}
+          {% if img_url %}
+          <a href="{{ img_url }}" target="_blank" rel="noreferrer">
+            <img src="{{ img_url }}" alt="event image" style="max-width:100%; max-height:180px; object-fit:cover; border-radius:8px;" />
+          </a>
+          {% endif %}
+        {% endfor %}
       </div>
       {% endif %}
       {% if can_write %}
@@ -504,7 +541,7 @@
 </section>
 
 {% if can_write %}
-  <input id="event-image-file-input" type="file" accept="image/*" style="display:none" />
+  <input id="event-image-file-input" type="file" accept="image/*" multiple style="display:none" />
   <input id="event-image-file-input-camera" type="file" accept="image/*" capture="environment" style="display:none" />
   <div class="quick-attach-fab">
     <button id="quick-attach-gallery-fab" type="button">Gallery</button>
@@ -1023,10 +1060,72 @@
     return String(type || "").toLowerCase().replace(/_/g, "-");
   }
 
+  function splitEventImageUrls(raw) {
+    if (raw === null || raw === undefined) return [];
+    return String(raw)
+      .split(/\r?\n/)
+      .map((value) => value.trim())
+      .filter((value, idx, arr) => value && arr.indexOf(value) === idx);
+  }
+
+  function parseEventImageUrlsDataset(rawJson, fallbackRaw = "") {
+    const text = String(rawJson || "").trim();
+    if (text) {
+      try {
+        const parsed = JSON.parse(text);
+        if (Array.isArray(parsed)) {
+          return parsed
+            .map((value) => String(value || "").trim())
+            .filter((value, idx, arr) => value && arr.indexOf(value) === idx);
+        }
+      } catch (_) {}
+    }
+    return splitEventImageUrls(fallbackRaw);
+  }
+
+  function serializeEventImageUrls(urls) {
+    return (Array.isArray(urls) ? urls : [])
+      .map((value) => String(value || "").trim())
+      .filter((value, idx, arr) => value && arr.indexOf(value) === idx)
+      .join("\n");
+  }
+
+  function getEventImageUrls(eventLike) {
+    if (eventLike && Array.isArray(eventLike.image_urls)) {
+      return eventLike.image_urls
+        .map((value) => String(value || "").trim())
+        .filter((value, idx, arr) => value && arr.indexOf(value) === idx);
+    }
+    return splitEventImageUrls(eventLike?.image_url || "");
+  }
+
+  function buildEventImageCellHtml(eventLike) {
+    const eventId = eventLike?.id || "";
+    const imageUrls = getEventImageUrls(eventLike);
+    const items = imageUrls
+      .map((url) => `
+        <div class="event-image-item">
+          <a href="${escapeHtml(url)}" target="_blank" rel="noreferrer">
+            <img src="${escapeHtml(url)}" alt="event image" style="max-width:72px; max-height:72px; object-fit:cover; border-radius:8px;" />
+          </a>
+          ${canWrite
+            ? `<button type="button" class="secondary event-image-delete" data-event-id="${escapeHtml(eventId)}" data-image-url="${escapeHtml(url)}" aria-label="Delete image">x</button>`
+            : ""}
+        </div>
+      `)
+      .join("");
+    return `
+      <div class="event-image-list">${items}</div>
+      ${canWrite ? `<button type="button" class="secondary event-image-menu" data-event-id="${escapeHtml(eventId)}">Image</button>` : ""}
+    `;
+  }
+
   function buildEventRowHtml(e) {
     const delta = Number.isFinite(Number(e.open_risk_delta)) ? Number(e.open_risk_delta) : 0;
     const deltaClass = delta > 0 ? "chip-bad" : delta < 0 ? "chip-ok" : "chip-neutral";
     const cashForDataset = e.type === "CASHFLOW" && e.amount !== null && e.amount !== undefined ? e.amount : "";
+    const imageUrls = getEventImageUrls(e);
+    const serializedImageUrls = serializeEventImageUrls(imageUrls);
     return `
       <tr
         class="journal-row"
@@ -1048,20 +1147,26 @@
         data-event-win-lose="${escapeHtml(e.win_lose || "")}"
         data-event-reason="${escapeHtml(e.reason || "")}"
         data-event-note="${escapeHtml(e.note || "")}"
-        data-event-image-url="${escapeHtml(e.image_url || "")}"
+        data-event-image-url="${escapeHtml(serializedImageUrls)}"
+        data-event-image-urls="${escapeHtml(JSON.stringify(imageUrls))}"
         data-event-review="${escapeHtml(e.review || "")}"
+        data-event-trade-group-id="${escapeHtml(e.trade_group_id ?? "")}"
       >
-        <td>${escapeHtml(formatTs(e.ts))}</td>
-        <td>${escapeHtml(e.ticker || "")}</td>
-        <td>${escapeHtml(e.market || "")}</td>
-        <td>${escapeHtml(e.currency || "")}</td>
+        <td class="inline-editable col-ts" data-inline-field="ts">${escapeHtml(formatTs(e.ts))}</td>
+        <td class="col-ticker${(e.type === "BUY" || e.type === "SELL") ? " inline-editable" : ""}" ${(e.type === "BUY" || e.type === "SELL") ? 'data-inline-field="ticker"' : ""}>${escapeHtml(e.ticker || "")}</td>
+        <td class="inline-editable col-market" data-inline-field="market">${escapeHtml(e.market || "")}</td>
+        <td class="inline-editable col-currency" data-inline-field="currency">${escapeHtml(e.currency || "")}</td>
         <td>${escapeHtml(e.symbol_name || "")}</td>
         <td><span class="badge badge-${escapeHtml(typeClass(e.type))}">${escapeHtml(e.type || "")}</span></td>
         <td>${e.win_lose === "W" ? '<span class="wl-win">W</span>' : e.win_lose === "L" ? '<span class="wl-lose">L</span>' : ""}</td>
-        <td>${escapeHtml(formatQty(e.qty))}</td>
-        <td>${escapeHtml((e.currency_symbol || currencySymbolForCode(e.currency)) + (e.price_display || formatPrice(e.price)))}</td>
-        <td>${escapeHtml((e.sl_display || formatSlTp(e.sl)) + " / " + (e.tp_display || formatSlTp(e.tp)))}</td>
-        <td>${escapeHtml(formatMoney(e.amount, baseCurrencySymbol, 2))}</td>
+        <td${e.type === "BUY" ? ' class="inline-editable" data-inline-field="qty"' : ""}>${escapeHtml(formatQty(e.qty))}</td>
+        <td${(e.type === "BUY" || e.type === "SELL") ? ' class="inline-editable" data-inline-field="price"' : ""}>${escapeHtml((e.currency_symbol || currencySymbolForCode(e.currency)) + (e.price_display || formatPrice(e.price)))}</td>
+        <td>
+          <span${(e.type === "BUY" || e.type === "SL_UPDATE") ? ' class="inline-editable inline-edit-token" data-inline-field="sl"' : ""}>${escapeHtml(e.sl_display || formatSlTp(e.sl))}</span>
+          /
+          <span${(e.type === "BUY" || e.type === "SL_UPDATE") ? ' class="inline-editable inline-edit-token" data-inline-field="tp"' : ""}>${escapeHtml(e.tp_display || formatSlTp(e.tp))}</span>
+        </td>
+        <td${e.type === "CASHFLOW" ? ' class="inline-editable" data-inline-field="cash_amount"' : ""}>${escapeHtml(formatMoney(e.amount, baseCurrencySymbol, 2))}</td>
         <td>${escapeHtml(formatMoney(e.unrealized_pnl, baseCurrencySymbol, 2))}</td>
         <td>${escapeHtml(formatMoney(e.realized_pnl, baseCurrencySymbol, 2))}</td>
         <td>${escapeHtml(formatMoney(e.realized_pnl_local, krwCurrencySymbol, 0))}</td>
@@ -1071,19 +1176,19 @@
           ${e.open_risk_delta_details ? `<div class="small">${escapeHtml(e.open_risk_delta_details)}</div>` : ""}
         </td>
         <td class="col-reason-note">
-          <div>${escapeHtml(e.reason || "")}</div>
-          <div class="small">${escapeHtml(e.note || "")}</div>
+          <div class="inline-editable" data-inline-field="reason">${escapeHtml(e.reason || "")}</div>
+          <div class="small inline-editable" data-inline-field="note">${escapeHtml(e.note || "")}</div>
         </td>
-        <td>
-          ${e.trade_group_id ? `<a href="/trades/${encodeURIComponent(e.trade_group_id)}">trade#${escapeHtml(e.trade_group_id)}</a>` : ""}
+        <td class="inline-editable col-trade-group" data-inline-field="trade_group_id">
+          ${e.trade_group_id ? `<a href="/trades/${encodeURIComponent(e.trade_group_id)}">trade#${escapeHtml(e.trade_group_id)}</a>` : '<span class="small">-</span>'}
+        </td>
+        <td class="inline-editable col-review" data-inline-field="review">
           <div class="small">${escapeHtml(e.review || "")}</div>
         </td>
-        <td>
-          ${e.image_url
-            ? `<a href="${escapeHtml(e.image_url)}" target="_blank" rel="noreferrer"><img src="${escapeHtml(e.image_url)}" alt="event image" style="max-width:72px; max-height:72px; object-fit:cover; border-radius:8px;" /></a>`
-            : ""}
+        <td class="event-image-cell col-image">
+          ${buildEventImageCellHtml(e)}
         </td>
-        <td>${canWrite
+        <td class="col-actions">${canWrite
           ? `<button type="button" class="secondary event-attach-image" data-event-id="${escapeHtml(e.id)}">Attach</button>
              <button type="button" class="secondary event-edit" data-event-id="${escapeHtml(e.id)}">Edit</button>
              <button type="button" class="secondary event-delete" data-event-id="${escapeHtml(e.id)}">Delete</button>`
@@ -1093,6 +1198,10 @@
   }
 
   function buildEventCardHtml(e) {
+    const imageUrls = getEventImageUrls(e);
+    const imageBlocks = imageUrls
+      .map((url) => `<a href="${escapeHtml(url)}" target="_blank" rel="noreferrer"><img src="${escapeHtml(url)}" alt="event image" style="max-width:100%; max-height:180px; object-fit:cover; border-radius:8px;" /></a>`)
+      .join("");
     return `
       <article class="journal-mobile-card" data-event-id="${escapeHtml(e.id || "")}">
         <div class="journal-mobile-card-head">
@@ -1108,7 +1217,7 @@
           <div><span class="small">Realized PnL</span><div>${escapeHtml(formatMoney(e.realized_pnl, baseCurrencySymbol, 2))}</div></div>
           <div><span class="small">Reason</span><div>${escapeHtml(e.reason || "")}</div></div>
         </div>
-        ${e.image_url ? `<div style="margin-top:8px;"><a href="${escapeHtml(e.image_url)}" target="_blank" rel="noreferrer"><img src="${escapeHtml(e.image_url)}" alt="event image" style="max-width:100%; max-height:180px; object-fit:cover; border-radius:8px;" /></a></div>` : ""}
+        ${imageBlocks ? `<div style="margin-top:8px; display:grid; gap:8px;">${imageBlocks}</div>` : ""}
         ${canWrite
           ? `<div class="form-row" style="margin-top:8px;">
               <button type="button" class="secondary event-attach-image" data-event-id="${escapeHtml(e.id)}">Attach</button>
@@ -1288,13 +1397,53 @@
     let attachTargetEventId = null;
     let selectedEventId = null;
 
+    const openImageActionMenu = (eventId) => {
+      if (!eventId) return;
+      const choice = window.prompt("Image action: 1=Upload file, 2=Paste from clipboard", "1");
+      if (choice === null) return;
+      const mode = String(choice || "").trim();
+      attachTargetEventId = String(eventId);
+      setSelectedEventId(String(eventId));
+      if (mode === "2") {
+        setQuickAttachStatus(`Event #${eventId} selected. Paste image with Ctrl+V.`);
+        return;
+      }
+      eventImageFileInput?.click();
+    };
+
     const handleActionClick = async (btn) => {
       const eventId = btn.dataset.eventId;
       if (!eventId) return;
 
       if (btn.classList.contains("event-attach-image")) {
         attachTargetEventId = eventId;
+        setSelectedEventId(eventId);
         eventImageFileInput?.click();
+        return;
+      }
+
+      if (btn.classList.contains("event-image-menu")) {
+        openImageActionMenu(eventId);
+        return;
+      }
+
+      if (btn.classList.contains("event-image-delete")) {
+        const imageUrl = String(btn.dataset.imageUrl || "").trim();
+        if (!imageUrl) return;
+        const row = btn.closest("tr.journal-row") || document.querySelector(`tr.journal-row[data-event-id="${eventId}"]`);
+        const currentUrls = parseEventImageUrlsDataset(
+          row?.dataset?.eventImageUrls || "",
+          row?.dataset?.eventImageUrl || "",
+        );
+        const nextUrls = currentUrls.filter((url) => url !== imageUrl);
+        try {
+          await jsonRequest(`/api/events/${eventId}`, "PATCH", {
+            image_url: serializeEventImageUrls(nextUrls) || null,
+          });
+          await loadJournalPage(journalState.page, false);
+        } catch (err) {
+          window.alert(`Image delete failed: ${err.message}`);
+        }
         return;
       }
 
@@ -1418,20 +1567,38 @@
       return data.image_url;
     }
 
-    async function attachImageToEvent(eventId, file) {
-      const imageUrl = await uploadImageAndGetUrl(file);
-      await jsonRequest(`/api/events/${eventId}`, "PATCH", { image_url: imageUrl });
+    function getEventImageUrlsFromDom(eventId) {
+      const row = document.querySelector(`tr.journal-row[data-event-id="${String(eventId)}"]`);
+      if (!row) return [];
+      return parseEventImageUrlsDataset(row.dataset.eventImageUrls || "", row.dataset.eventImageUrl || "");
+    }
+
+    async function attachImagesToEvent(eventId, files) {
+      const queue = Array.isArray(files) ? files : [files];
+      const validFiles = queue.filter((file) => !!file);
+      if (!validFiles.length) {
+        throw new Error("image file is required");
+      }
+      const existing = getEventImageUrlsFromDom(eventId);
+      const uploaded = [];
+      for (const file of validFiles) {
+        uploaded.push(await uploadImageAndGetUrl(file));
+      }
+      const next = existing
+        .concat(uploaded)
+        .filter((value, idx, arr) => value && arr.indexOf(value) === idx);
+      await jsonRequest(`/api/events/${eventId}`, "PATCH", { image_url: serializeEventImageUrls(next) });
       await loadJournalPage(journalState.page, false);
     }
 
     eventImageFileInput?.addEventListener("change", async () => {
       if (!attachTargetEventId) return;
-      const file = eventImageFileInput.files && eventImageFileInput.files[0];
+      const files = Array.from(eventImageFileInput.files || []);
       eventImageFileInput.value = "";
-      if (!file) return;
+      if (!files.length) return;
       try {
-        await attachImageToEvent(attachTargetEventId, file);
-        setQuickAttachStatus(`Event #${attachTargetEventId}에 이미지가 첨부되었습니다.`);
+        await attachImagesToEvent(attachTargetEventId, files);
+        setQuickAttachStatus(`Event #${attachTargetEventId}에 이미지 ${files.length}개가 첨부되었습니다.`);
         setSelectedEventId(attachTargetEventId);
       } catch (err) {
         setQuickAttachStatus(`첨부 실패: ${err.message}`, true);
@@ -1447,7 +1614,7 @@
       eventImageFileInputCamera.value = "";
       if (!file) return;
       try {
-        await attachImageToEvent(attachTargetEventId, file);
+        await attachImagesToEvent(attachTargetEventId, [file]);
         setQuickAttachStatus(`Event #${attachTargetEventId}에 이미지가 첨부되었습니다.`);
         setSelectedEventId(attachTargetEventId);
       } catch (err) {
@@ -1517,25 +1684,50 @@
       setSelectedEventId(card.dataset.eventId);
       setQuickAttachStatus(`Event #${card.dataset.eventId} 선택됨`);
     });
+    journalTbody?.addEventListener("dblclick", (e) => {
+      const cell = e.target?.closest ? e.target.closest(".event-image-cell") : null;
+      if (!cell) return;
+      const row = cell.closest("tr.journal-row");
+      if (!row?.dataset?.eventId) return;
+      openImageActionMenu(row.dataset.eventId);
+    });
+    function resolvePasteTargetEventId(e) {
+      if (attachTargetEventId) return String(attachTargetEventId);
+      const row = e.target && e.target.closest ? e.target.closest("tr.journal-row") : null;
+      if (row?.dataset?.eventId) return String(row.dataset.eventId);
+      if (selectedEventId) return String(selectedEventId);
+      const inputValue = (quickAttachEventIdInput?.value || "").trim();
+      if (inputValue) return inputValue;
+      const selectValue = (quickAttachEventSelect?.value || "").trim();
+      if (selectValue) return selectValue;
+      const firstRow = document.querySelector("tr.journal-row");
+      if (firstRow?.dataset?.eventId) return String(firstRow.dataset.eventId);
+      return null;
+    }
 
     document.addEventListener("paste", async (e) => {
       const items = Array.from(e.clipboardData?.items || []);
       const imgItem = items.find((item) => item.type && item.type.startsWith("image/"));
       if (!imgItem) return;
-      const row = e.target && e.target.closest ? e.target.closest("tr.journal-row") : null;
-      let eventId = row?.dataset?.eventId || null;
+
+      let eventId = resolvePasteTargetEventId(e);
       if (!eventId) {
-        eventId = window.prompt("붙여넣은 이미지를 연결할 Event ID를 입력하세요.");
+        eventId = window.prompt("Event ID to attach pasted image:");
       }
       if (!eventId) return;
+
       const file = imgItem.getAsFile();
       if (!file) return;
       e.preventDefault();
       try {
-        await attachImageToEvent(eventId, file);
+        await attachImagesToEvent(eventId, [file]);
         setSelectedEventId(eventId);
+        setQuickAttachStatus(`Pasted image attached to Event #${eventId}`);
       } catch (err) {
+        setQuickAttachStatus(`Paste upload failed: ${err.message}`, true);
         window.alert(`Paste image failed: ${err.message}`);
+      } finally {
+        attachTargetEventId = null;
       }
     });
 
@@ -1556,9 +1748,12 @@
         market: row.dataset.eventMarket || null,
         currency: row.dataset.eventCurrency || null,
         fx_rate_to_base: toNullableNumber(row.dataset.eventFxRate, "fx_rate_to_base"),
+        trade_group_id: toNullableNumber(row.dataset.eventTradeGroupId, "trade_group_id"),
         reason: row.dataset.eventReason || null,
         note: row.dataset.eventNote || null,
-        image_url: row.dataset.eventImageUrl || null,
+        image_url: serializeEventImageUrls(
+          parseEventImageUrlsDataset(row.dataset.eventImageUrls || "", row.dataset.eventImageUrl || ""),
+        ) || null,
       };
 
       if (type === "BUY") {
@@ -1582,6 +1777,177 @@
       return payload;
     }
 
+    const INLINE_FIELD_LABELS = {
+      ts: "Timestamp",
+      ticker: "Ticker",
+      market: "Market",
+      currency: "Currency",
+      qty: "Qty",
+      price: "Price",
+      sl: "SL",
+      tp: "TP",
+      cash_amount: "Cash Amount",
+      reason: "Reason",
+      note: "Note",
+      trade_group_id: "Trade Group ID",
+      review: "Review",
+    };
+
+    function isInlineFieldSupported(eventType, field) {
+      const type = String(eventType || "").toUpperCase();
+      if (!field) return false;
+      if (["ts", "market", "currency", "reason", "note"].includes(field)) return true;
+      if (field === "ticker") return type === "BUY" || type === "SELL";
+      if (field === "qty") return type === "BUY";
+      if (field === "price") return type === "BUY" || type === "SELL";
+      if (field === "sl" || field === "tp") return type === "BUY" || type === "SL_UPDATE";
+      if (field === "cash_amount") return type === "CASHFLOW";
+      if (field === "trade_group_id") return true;
+      if (field === "review") return true;
+      return false;
+    }
+
+    function getInlineFieldValue(row, field) {
+      switch (field) {
+        case "ts":
+          return row.dataset.eventTs || "";
+        case "ticker":
+          return row.dataset.eventTicker || "";
+        case "market":
+          return row.dataset.eventMarket || "";
+        case "currency":
+          return row.dataset.eventCurrency || "";
+        case "qty":
+          return row.dataset.eventQty || "";
+        case "price":
+          return row.dataset.eventPrice || "";
+        case "sl":
+          return row.dataset.eventSl || "";
+        case "tp":
+          return row.dataset.eventTp || "";
+        case "cash_amount":
+          return row.dataset.eventCash || "";
+        case "reason":
+          return row.dataset.eventReason || "";
+        case "note":
+          return row.dataset.eventNote || "";
+        case "trade_group_id":
+          return row.dataset.eventTradeGroupId || "";
+        case "review":
+          return row.dataset.eventReview || "";
+        default:
+          return "";
+      }
+    }
+
+    function normalizeInlineFieldValue(field, rawValue) {
+      const text = String(rawValue ?? "").trim();
+
+      if (field === "ts") {
+        if (!text) throw new Error("Timestamp cannot be empty");
+        const normalizedTs = text.replace(" ", "T");
+        if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/.test(normalizedTs)) {
+          throw new Error("Timestamp format: YYYY-MM-DDTHH:MM[:SS]");
+        }
+        return normalizedTs.length === 16 ? `${normalizedTs}:00` : normalizedTs;
+      }
+
+      if (field === "ticker") {
+        if (!text) throw new Error("Ticker cannot be empty");
+        return text.toUpperCase();
+      }
+
+      if (field === "market" || field === "currency") {
+        return text ? text.toUpperCase() : null;
+      }
+
+      if (field === "trade_group_id") {
+        if (!text) return null;
+        const n = Number(text);
+        if (!Number.isInteger(n) || n < 1) {
+          throw new Error("Trade Group ID must be an integer >= 1");
+        }
+        return n;
+      }
+
+      if (["qty", "price", "cash_amount", "sl", "tp"].includes(field)) {
+        if (!text) {
+          if (field === "sl" || field === "tp") return null;
+          throw new Error(`${INLINE_FIELD_LABELS[field] || field} cannot be empty`);
+        }
+        const num = Number(text.replace(/,/g, ""));
+        if (!Number.isFinite(num)) {
+          throw new Error(`${INLINE_FIELD_LABELS[field] || field} must be a number`);
+        }
+        return num;
+      }
+
+      if (["reason", "note", "review"].includes(field)) {
+        return text || null;
+      }
+
+      return text || null;
+    }
+
+    journalTbody?.addEventListener("dblclick", async (e) => {
+      const target = e.target?.closest ? e.target.closest("[data-inline-field]") : null;
+      if (!target) return;
+
+      const row = target.closest("tr.journal-row");
+      if (!row || !row.dataset.eventId) return;
+
+      const eventType = row.dataset.eventType || "";
+      const field = target.dataset.inlineField || "";
+      if (!isInlineFieldSupported(eventType, field)) {
+        window.alert(`${eventType} event does not support editing ${INLINE_FIELD_LABELS[field] || field}.`);
+        return;
+      }
+      if (
+        field === "review" &&
+        !(Number.isInteger(Number(row.dataset.eventTradeGroupId || "")) && Number(row.dataset.eventTradeGroupId || "") > 0) &&
+        String(eventType || "").toUpperCase() !== "REVIEW"
+      ) {
+        window.alert("This row is not linked to a trade group review.");
+        return;
+      }
+
+      const currentValue = getInlineFieldValue(row, field);
+      const promptLabel = INLINE_FIELD_LABELS[field] || field;
+      const edited = window.prompt(`${promptLabel} (press Enter to save)`, currentValue);
+      if (edited === null) return;
+
+      let payloadValue;
+      try {
+        payloadValue = normalizeInlineFieldValue(field, edited);
+      } catch (err) {
+        window.alert(err.message || "Invalid value");
+        return;
+      }
+
+      try {
+        if (field === "review") {
+          const tradeGroupId = Number(row.dataset.eventTradeGroupId || "");
+          if (Number.isInteger(tradeGroupId) && tradeGroupId > 0) {
+            await jsonRequest("/api/review", "POST", {
+              trade_group_id: tradeGroupId,
+              review_text: String(payloadValue ?? ""),
+            });
+          } else if ((row.dataset.eventType || "").toUpperCase() === "REVIEW") {
+            await jsonRequest(`/api/events/${row.dataset.eventId}`, "PATCH", {
+              review_text: payloadValue,
+            });
+          } else {
+            throw new Error("This row has no trade group, so review cannot be saved.");
+          }
+        } else {
+          await jsonRequest(`/api/events/${row.dataset.eventId}`, "PATCH", { [field]: payloadValue });
+        }
+        await loadJournalPage(journalState.page, false);
+      } catch (err) {
+        window.alert(`Inline edit failed: ${err.message}`);
+      }
+    });
+
     journalTable.addEventListener("click", async (e) => {
       const btn = e.target.closest("button");
       if (!btn) return;
@@ -1603,6 +1969,7 @@
 
 </script>
 {% endblock %}
+
 
 
 

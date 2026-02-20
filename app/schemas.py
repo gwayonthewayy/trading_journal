@@ -74,6 +74,7 @@ class EventUpdateRequest(BaseModel):
     exchange: Optional[str] = None
     currency: Optional[str] = None
     fx_rate_to_base: Optional[float] = Field(default=None, gt=0)
+    trade_group_id: Optional[int] = Field(default=None, ge=1)
     qty: Optional[float] = Field(default=None, gt=0)
     price: Optional[float] = Field(default=None, ge=0)
     fee: Optional[float] = Field(default=None, ge=0)

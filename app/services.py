@@ -98,6 +98,20 @@ def _normalize_optional_text(value: str | None) -> str | None:
     return trimmed or None
 
 
+def _split_image_urls(value: str | None) -> list[str]:
+    if value is None:
+        return []
+    urls: list[str] = []
+    for line in value.splitlines():
+        candidate = line.strip()
+        if not candidate:
+            continue
+        if candidate in urls:
+            continue
+        urls.append(candidate)
+    return urls
+
+
 def _get_base_currency(session: Session) -> str:
     settings = session.get(Setting, 1)
     if settings and settings.base_currency and settings.base_currency.strip():
@@ -559,8 +573,9 @@ def create_sell(session: Session, req: SellRequest) -> dict[str, Any]:
     effective_ts = event_ts or datetime.utcnow()
     base_currency = _get_base_currency(session)
 
-    if req.trade_group_id is not None:
-        group = session.get(TradeGroup, req.trade_group_id)
+    requested_trade_group_id = req.trade_group_id
+    if requested_trade_group_id is not None:
+        group = session.get(TradeGroup, requested_trade_group_id)
         if group is None:
             raise HTTPException(status_code=400, detail="trade_group_id does not exist")
 
@@ -572,6 +587,25 @@ def create_sell(session: Session, req: SellRequest) -> dict[str, Any]:
     lots = session.exec(select(Lot).where(Lot.id.in_(lot_ids))).all()
     if len(lots) != len(lot_ids):
         raise HTTPException(status_code=400, detail="one or more lots do not exist")
+    lot_trade_groups = {lot.trade_group_id for lot in lots}
+    if len(lot_trade_groups) > 1:
+        raise HTTPException(
+            status_code=400,
+            detail="allocation lots must have same trade_group_id",
+        )
+    inferred_trade_group_id = next(iter(lot_trade_groups)) if lot_trade_groups else None
+    if (
+        requested_trade_group_id is not None
+        and inferred_trade_group_id is not None
+        and requested_trade_group_id != inferred_trade_group_id
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="sell trade_group_id must match allocated BUY lot trade_group_id",
+        )
+    effective_trade_group_id = (
+        inferred_trade_group_id if inferred_trade_group_id is not None else requested_trade_group_id
+    )
 
     lot_map = {lot.id: lot for lot in lots}
     state_at_sell = _build_lot_states_from_events(session, up_to_ts=effective_ts)
@@ -642,7 +676,7 @@ def create_sell(session: Session, req: SellRequest) -> dict[str, Any]:
         exchange=exchange,
         currency=currency,
         fx_rate_to_base=fx_rate_to_base,
-        trade_group_id=req.trade_group_id,
+        trade_group_id=effective_trade_group_id,
         qty=sell_qty,
         price=req.price,
         fee=req.fee,
@@ -816,6 +850,12 @@ def update_event(session: Session, event_id: int, req: EventUpdateRequest) -> di
         if req.fx_rate_to_base is None:
             raise HTTPException(status_code=400, detail="fx_rate_to_base cannot be null")
         event.fx_rate_to_base = req.fx_rate_to_base
+    if "trade_group_id" in changed:
+        if req.trade_group_id is not None:
+            group = session.get(TradeGroup, req.trade_group_id)
+            if group is None:
+                raise HTTPException(status_code=400, detail="trade_group_id does not exist")
+        event.trade_group_id = req.trade_group_id
     if "reason" in changed:
         event.reason = _normalize_optional_text(req.reason)
     if "note" in changed:
@@ -856,6 +896,7 @@ def update_event(session: Session, event_id: int, req: EventUpdateRequest) -> di
         lot.exchange = event.exchange
         lot.currency = event.currency
         lot.fx_rate_to_base = event.fx_rate_to_base or 1.0
+        lot.trade_group_id = event.trade_group_id
         lot.sl = event.sl
         lot.tp = event.tp
         lot.buy_reason = event.reason
@@ -915,6 +956,7 @@ def update_event(session: Session, event_id: int, req: EventUpdateRequest) -> di
         if event.lot_id is not None:
             lot = session.get(Lot, event.lot_id)
             if lot is not None:
+                lot.trade_group_id = event.trade_group_id
                 lot.sl = event.sl
                 lot.tp = event.tp
                 session.add(lot)
@@ -1085,6 +1127,21 @@ def build_portfolio(session: Session) -> dict[str, Any]:
     base_currency = _get_base_currency(session)
 
     lots = session.exec(select(Lot).where(Lot.qty_open > 0)).all()
+    lot_ids = [lot.id for lot in lots if lot.id is not None]
+    buy_event_by_lot_id: dict[int, Event] = {}
+    if lot_ids:
+        buy_events = session.exec(
+            select(Event)
+            .where(
+                Event.type == EventType.BUY,
+                Event.lot_id.in_(lot_ids),
+            )
+            .order_by(Event.ts.asc(), Event.id.asc())
+        ).all()
+        for buy_event in buy_events:
+            if buy_event.lot_id is None:
+                continue
+            buy_event_by_lot_id.setdefault(buy_event.lot_id, buy_event)
     symbol_names = _symbol_name_map(session)
 
     by_ticker: dict[tuple[str, str | None, str | None, str | None], list[Lot]] = defaultdict(list)
@@ -1096,6 +1153,94 @@ def build_portfolio(session: Session) -> dict[str, Any]:
             _normalize_upper_optional(lot.currency),
         )
         by_ticker[key].append(lot)
+
+    sells_by_key: dict[tuple[str, str | None, str | None, str | None], list[dict[str, Any]]] = defaultdict(list)
+    sell_events = session.exec(
+        select(Event)
+        .where(Event.type == EventType.SELL)
+        .order_by(Event.ts.desc(), Event.id.desc())
+    ).all()
+    sell_event_ids = [event.id for event in sell_events if event.id is not None]
+    allocs_by_event: dict[int, list[SellAllocation]] = defaultdict(list)
+    lots_by_id: dict[int, Lot] = {}
+    if sell_event_ids:
+        sell_allocs = session.exec(
+            select(SellAllocation)
+            .where(SellAllocation.sell_event_id.in_(sell_event_ids))
+            .order_by(SellAllocation.sell_event_id.asc(), SellAllocation.id.asc())
+        ).all()
+        lot_ids_for_allocs: set[int] = set()
+        for alloc in sell_allocs:
+            allocs_by_event[alloc.sell_event_id].append(alloc)
+            lot_ids_for_allocs.add(alloc.lot_id)
+
+        if lot_ids_for_allocs:
+            lots_for_allocs = session.exec(select(Lot).where(Lot.id.in_(sorted(lot_ids_for_allocs)))).all()
+            lots_by_id = {lot.id: lot for lot in lots_for_allocs if lot.id is not None}
+
+    for sell_event in sell_events:
+        if sell_event.id is None:
+            continue
+        alloc_list = allocs_by_event.get(sell_event.id, [])
+        allocation_rows: list[dict[str, Any]] = []
+        for alloc in alloc_list:
+            lot = lots_by_id.get(alloc.lot_id)
+            allocation_rows.append(
+                {
+                    "lot_id": alloc.lot_id,
+                    "qty_sold": alloc.qty_sold,
+                    "ticker": lot.ticker if lot is not None else None,
+                    "market": _normalize_upper_optional(lot.market if lot is not None else None),
+                    "exchange": _normalize_upper_optional(lot.exchange if lot is not None else None),
+                    "currency": _normalize_upper_optional(lot.currency if lot is not None else None),
+                    "trade_group_id": lot.trade_group_id if lot is not None else None,
+                }
+            )
+        allocation_rows.sort(key=lambda row: row.get("lot_id") or 0)
+
+        ticker = (sell_event.ticker or "").strip().upper()
+        market = _normalize_upper_optional(sell_event.market)
+        exchange = _normalize_upper_optional(sell_event.exchange)
+        currency = _normalize_upper_optional(sell_event.currency)
+        if allocation_rows:
+            first_alloc = allocation_rows[0]
+            if not ticker:
+                ticker = (first_alloc.get("ticker") or "").strip().upper()
+            if market is None:
+                market = first_alloc.get("market")
+            if exchange is None:
+                exchange = first_alloc.get("exchange")
+            if currency is None:
+                currency = first_alloc.get("currency")
+        if not ticker:
+            continue
+
+        allocation_labels = [
+            f"lot#{int(item['lot_id'])} ({item['qty_sold']:,.4f})"
+            for item in allocation_rows
+            if item.get("lot_id") is not None
+        ]
+        sells_by_key[(ticker, market, exchange, currency)].append(
+            {
+                "event_id": sell_event.id,
+                "ts": sell_event.ts,
+                "ticker": ticker,
+                "market": market,
+                "exchange": exchange,
+                "currency": currency,
+                "currency_symbol": _currency_symbol(currency),
+                "qty": sell_event.qty,
+                "price": sell_event.price,
+                "price_display": _format_price_for_display(sell_event.price),
+                "fee": sell_event.fee or 0.0,
+                "realized_pnl": sell_event.realized_pnl or 0.0,
+                "reason": sell_event.reason,
+                "note": sell_event.note,
+                "sell_lot_label": f"sell#{sell_event.id}",
+                "allocation_text": ", ".join(allocation_labels) if allocation_labels else "-",
+                "allocations": allocation_rows,
+            }
+        )
 
     cash_balance = get_cashflow_balance(session)
     open_position_mtm = get_open_position_mtm(session)
@@ -1147,6 +1292,11 @@ def build_portfolio(session: Session) -> dict[str, Any]:
                 "buy_reason": lot.buy_reason,
                 "note": lot.note,
                 "open_risk": calc_lot_open_risk(lot, est_exit_fee_rate),
+                "buy_event_id": (
+                    buy_event_by_lot_id.get(lot.id).id
+                    if lot.id is not None and buy_event_by_lot_id.get(lot.id) is not None
+                    else None
+                ),
             }
             for lot in ticker_lots
         ]
@@ -1166,6 +1316,7 @@ def build_portfolio(session: Session) -> dict[str, Any]:
                 "open_risk_pct": open_risk_pct,
                 "open_risk_total_cost_pct": open_risk_total_cost_pct,
                 "lots": lots_out,
+                "sell_events": sells_by_key.get(key, []),
             }
         )
 
@@ -1455,6 +1606,7 @@ def build_journal(
                 "book_asset": book_asset_snapshots.get(event.id or -1, current_book_asset),
                 "note": event.note,
                 "image_url": event.image_url,
+                "image_urls": _split_image_urls(event.image_url),
                 "reason": event.reason,
                 "review": review_text,
                 "trade_group_id": event.trade_group_id,

@@ -421,13 +421,169 @@ th,
 td {
   text-align: left;
   border-bottom: 1px solid #ecf1f6;
+  border-right: 1px solid #e2eaf3;
+  box-shadow: inset -1px 0 0 #e2eaf3;
   padding: 9px 8px;
   vertical-align: top;
 }
 
+tr th:last-child,
+tr td:last-child {
+  border-right: none;
+  box-shadow: none;
+}
+
+#journal-table th,
+#journal-table td {
+  padding: 4px 6px;
+  line-height: 1.2;
+}
+
+#journal-table td {
+  white-space: nowrap;
+  overflow-wrap: normal;
+}
+
+#journal-table td.col-reason-note,
+#journal-table td.col-review,
+#journal-table td.col-image {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+#journal-table th.col-ts,
+#journal-table td.col-ts {
+  min-width: 156px;
+}
+
+#journal-table th.col-ticker,
+#journal-table td.col-ticker {
+  min-width: 86px;
+}
+
+#journal-table th.col-market,
+#journal-table td.col-market,
+#journal-table th.col-currency,
+#journal-table td.col-currency {
+  min-width: 72px;
+}
+
+#journal-table th.col-trade-group,
+#journal-table td.col-trade-group {
+  min-width: 112px;
+}
+
+#journal-table th.col-review,
+#journal-table td.col-review {
+  min-width: 170px;
+}
+
+#journal-table th.col-actions,
+#journal-table td.col-actions {
+  min-width: 176px;
+}
+
 #journal-table th.col-reason-note,
 #journal-table td.col-reason-note {
-  min-width: 540px;
+  min-width: 270px;
+}
+
+#journal-table .inline-editable {
+  cursor: text;
+  border-radius: 6px;
+  transition: background-color 120ms ease;
+}
+
+#journal-table .inline-editable:hover {
+  background: rgba(31, 84, 115, 0.1);
+}
+
+#journal-table .inline-edit-token {
+  display: inline-block;
+  min-width: 2ch;
+  padding: 1px 3px;
+}
+
+#journal-table .event-image-cell {
+  min-width: 108px;
+}
+
+#journal-table .event-image-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+#journal-table .event-image-item {
+  position: relative;
+  display: inline-flex;
+}
+
+#journal-table .event-image-item img {
+  display: block;
+}
+
+#journal-table .event-image-delete {
+  position: absolute;
+  right: -6px;
+  top: -6px;
+  width: 18px;
+  height: 18px;
+  min-width: 18px;
+  padding: 0;
+  border-radius: 999px;
+  border: 1px solid #b9c9d9;
+  background: #fff;
+  color: #7a1b1b;
+  line-height: 1;
+  font-size: 0.72rem;
+  opacity: 0;
+  pointer-events: none;
+  transform: scale(0.96);
+  transition: opacity 120ms ease, transform 120ms ease;
+}
+
+#journal-table .event-image-item:hover .event-image-delete {
+  opacity: 1;
+  pointer-events: auto;
+  transform: scale(1);
+}
+
+#journal-table .event-image-menu {
+  width: auto;
+  margin-top: 4px;
+  padding: 2px 7px;
+  font-size: 0.72rem;
+}
+
+#portfolio-table .inline-editable {
+  cursor: text;
+  border-radius: 6px;
+  transition: background-color 120ms ease;
+}
+
+#portfolio-table .inline-editable:hover {
+  background: rgba(31, 84, 115, 0.1);
+}
+
+#portfolio-table th.col-lot-reason,
+#portfolio-table td.col-lot-reason,
+#portfolio-table th.col-lot-note,
+#portfolio-table td.col-lot-note {
+  min-width: 220px;
+}
+
+#portfolio-table td.col-lot-reason,
+#portfolio-table td.col-lot-note {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+#portfolio-table th.col-sell-alloc,
+#portfolio-table td.col-sell-alloc {
+  min-width: 260px;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 th {

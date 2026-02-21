@@ -11,7 +11,15 @@ from sqlmodel import Session
 
 from app.config import SecuritySettings, load_security_settings
 from app.database import get_session, init_db
-from app.schemas import BuyRequest, CashflowRequest, EventUpdateRequest, LotSLUpdateRequest, ReviewRequest, SellRequest
+from app.schemas import (
+    BuyRequest,
+    CashflowRequest,
+    DuplicateCheckRequest,
+    EventUpdateRequest,
+    LotSLUpdateRequest,
+    ReviewRequest,
+    SellRequest,
+)
 from app.security import (
     clear_admin_failed_attempts,
     check_admin_rate_limit,
@@ -38,10 +46,13 @@ from app.services import (
     create_cashflow,
     create_review,
     create_sell,
+    check_duplicate_event,
     delete_event,
     export_events_csv,
     export_lots_csv,
     export_sell_allocations_csv,
+    get_market_data_cache_status,
+    refresh_market_data_cache,
     save_uploaded_image,
     update_event,
     update_lot_sl,
@@ -316,6 +327,15 @@ def api_review(
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
+@app.post("/api/events/duplicate-check")
+def api_event_duplicate_check(
+    payload: DuplicateCheckRequest,
+    _auth: str = Depends(admin_api_guard),
+    session: Session = Depends(get_session),
+) -> dict:
+    return check_duplicate_event(session, payload)
+
+
 @app.patch("/api/events/{event_id}")
 def api_event_update(
     event_id: int,
@@ -351,6 +371,21 @@ def api_event_delete(
     except Exception as exc:  # pragma: no cover
         session.rollback()
         raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.get("/api/market-data/status")
+def api_market_data_status(
+    _auth: str = Depends(viewer_api_guard),
+) -> dict:
+    return get_market_data_cache_status()
+
+
+@app.post("/api/market-data/refresh")
+def api_market_data_refresh(
+    clear_name_cache: bool = Query(default=False),
+    _auth: str = Depends(admin_api_guard),
+) -> dict:
+    return refresh_market_data_cache(clear_name_cache=clear_name_cache)
 
 
 @app.get("/api/portfolio")

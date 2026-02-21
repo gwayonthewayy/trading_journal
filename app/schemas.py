@@ -67,6 +67,17 @@ class ReviewRequest(BaseModel):
     review_text: str
 
 
+class DuplicateCheckRequest(BaseModel):
+    event_type: str
+    ticker: Optional[str] = None
+    market: Optional[str] = None
+    currency: Optional[str] = None
+    ts: Optional[datetime] = None
+    qty: Optional[float] = Field(default=None, gt=0)
+    price: Optional[float] = Field(default=None, ge=0)
+    cash_amount: Optional[float] = None
+
+
 class EventUpdateRequest(BaseModel):
     ticker: Optional[str] = None
     ts: Optional[datetime] = None

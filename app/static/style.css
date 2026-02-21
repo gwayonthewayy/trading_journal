@@ -13,6 +13,7 @@
   --accent: #c35a32;
   --danger: #9e1f1f;
   --ok: #206245;
+  --journal-sticky-ts-width: 170px;
 }
 
 * {
@@ -259,6 +260,48 @@ body {
   font-size: 0.86rem;
 }
 
+.table-tool-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.table-tool-row button {
+  width: auto;
+  min-width: 76px;
+  padding: 6px 10px;
+}
+
+.table-tool-row .small {
+  margin-left: 4px;
+}
+
+.action-feedback {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid #c6d7e6;
+  border-radius: 10px;
+  background: #f5fbff;
+  margin: 8px 0;
+}
+
+.action-feedback[hidden] {
+  display: none !important;
+}
+
+.action-feedback button {
+  width: auto;
+  padding: 5px 10px;
+}
+
+.col-hidden {
+  display: none !important;
+}
+
 .metrics {
   display: grid;
   gap: 10px;
@@ -453,12 +496,33 @@ tr td:last-child {
 
 #journal-table th.col-ts,
 #journal-table td.col-ts {
-  min-width: 156px;
+  min-width: var(--journal-sticky-ts-width);
+  position: sticky;
+  left: 0;
+  z-index: 6;
 }
 
 #journal-table th.col-ticker,
 #journal-table td.col-ticker {
   min-width: 86px;
+  position: sticky;
+  left: var(--journal-sticky-ts-width);
+  z-index: 6;
+}
+
+#journal-table th.col-ts,
+#journal-table th.col-ticker {
+  background: #eef5fb;
+}
+
+#journal-table td.col-ts,
+#journal-table td.col-ticker {
+  background: #fff;
+}
+
+#journal-table tbody tr:nth-child(even) td.col-ts,
+#journal-table tbody tr:nth-child(even) td.col-ticker {
+  background: #fbfcfe;
 }
 
 #journal-table th.col-market,
@@ -584,6 +648,25 @@ tr td:last-child {
   min-width: 260px;
   white-space: normal;
   overflow-wrap: anywhere;
+}
+
+#portfolio-table th.col-portfolio-ticker,
+#portfolio-table td.col-portfolio-ticker {
+  position: sticky;
+  left: 0;
+  z-index: 4;
+}
+
+#portfolio-table th.col-portfolio-ticker {
+  background: #eef5fb;
+}
+
+#portfolio-table td.col-portfolio-ticker {
+  background: #fff;
+}
+
+#portfolio-table tbody tr:nth-child(even) td.col-portfolio-ticker {
+  background: #fbfcfe;
 }
 
 th {

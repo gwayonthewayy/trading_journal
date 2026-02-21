@@ -45,8 +45,17 @@
 
 <section class="card">
   <div class="card-head">
-    <h3>Portfolio by Ticker</h3>
-    <p>Expand each row to see lot-level details.</p>
+    <div>
+      <h3>Portfolio by Ticker</h3>
+      <p>Expand each row to see lot-level details.</p>
+    </div>
+    <div class="table-tool-row">
+      <button id="portfolio-col-btn" type="button" class="secondary">Columns</button>
+      {% if can_write %}
+      <button id="portfolio-market-refresh-btn" type="button" class="secondary">Refresh Price/FX</button>
+      {% endif %}
+      <span id="portfolio-market-status" class="small">Market data: ...</span>
+    </div>
   </div>
   {% if can_write %}
   <p class="small">Tip: In lot details, double-click `Entry/SL/TP/Reason/Note` to edit and press Enter to save.</p>
@@ -56,7 +65,7 @@
     <table id="portfolio-table">
       <thead>
         <tr>
-          <th class="th-filterable" data-table-filter-key="ticker" data-table-filter-label="Ticker">
+          <th class="th-filterable col-portfolio-ticker" data-table-filter-key="ticker" data-table-filter-label="Ticker">
             <span class="th-filter-head">
               <span class="th-filter-title">Ticker</span>
               <button type="button" class="th-filter-btn" aria-label="Filter Ticker" title="Filter Ticker">v</button>
@@ -100,7 +109,7 @@
           data-filter-currency="{{ row.currency or '' }}"
           data-filter-name="{{ row.symbol_name or '' }}"
         >
-          <td><strong>{{ row.ticker }}</strong></td>
+          <td class="col-portfolio-ticker"><strong>{{ row.ticker }}</strong></td>
           <td>{{ row.market or "" }} / {{ row.exchange or "" }}</td>
           <td>{{ row.currency or "" }}</td>
           <td>{{ row.symbol_name or "" }}</td>
@@ -232,7 +241,7 @@
         </tr>
       {% endfor %}
         <tr class="portfolio-total-row">
-          <th>TOTAL</th>
+          <th class="col-portfolio-ticker">TOTAL</th>
           <th></th>
           <th></th>
           <th></th>
@@ -267,7 +276,167 @@
   const portfolioRows = Array.from(document.querySelectorAll("tr.portfolio-row[data-filter-group]"));
   const portfolioDetailRows = Array.from(document.querySelectorAll("tr.portfolio-row-detail[data-filter-group]"));
   const portfolioTotalRow = document.querySelector("tr.portfolio-total-row");
+  const portfolioColBtn = document.getElementById("portfolio-col-btn");
+  const portfolioMarketRefreshBtn = document.getElementById("portfolio-market-refresh-btn");
+  const portfolioMarketStatus = document.getElementById("portfolio-market-status");
   const detailRowByGroup = new Map(portfolioDetailRows.map((row) => [row.dataset.filterGroup, row]));
+  const PORTFOLIO_COLUMN_PREF_KEY = "tj_portfolio_columns_v1";
+  const PORTFOLIO_COLUMNS = [
+    { index: 1, label: "Ticker" },
+    { index: 2, label: "Market/Exchange" },
+    { index: 3, label: "Currency" },
+    { index: 4, label: "Name" },
+    { index: 5, label: "Qty" },
+    { index: 6, label: "Avg Entry" },
+    { index: 7, label: "SL/TP" },
+    { index: 8, label: "Cost Amount" },
+    { index: 9, label: "Open Risk" },
+    { index: 10, label: "Open Risk % (Position)" },
+    { index: 11, label: "Risk % (Total Cost)" },
+  ];
+  let portfolioColumnPrefs = {};
+  const portfolioColumnPopup = document.createElement("div");
+  portfolioColumnPopup.className = "th-filter-menu th-filter-popup";
+  portfolioColumnPopup.hidden = true;
+  document.body.appendChild(portfolioColumnPopup);
+  let portfolioColumnPopupAnchor = null;
+
+  async function requestJson(url, method = "GET", payload = null) {
+    const options = { method, headers: {} };
+    if (payload !== null) {
+      options.headers["Content-Type"] = "application/json";
+      options.body = JSON.stringify(payload);
+    }
+    const res = await fetch(url, options);
+    if (!res.ok) {
+      let detail = `HTTP ${res.status}`;
+      try {
+        const body = await res.json();
+        if (body && body.detail) detail = String(body.detail);
+      } catch (_) {}
+      throw new Error(detail);
+    }
+    const text = await res.text();
+    return text ? JSON.parse(text) : {};
+  }
+
+  function loadPortfolioColumnPrefs() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(PORTFOLIO_COLUMN_PREF_KEY) || "{}");
+      portfolioColumnPrefs = saved && typeof saved === "object" ? saved : {};
+    } catch (_) {
+      portfolioColumnPrefs = {};
+    }
+  }
+
+  function savePortfolioColumnPrefs() {
+    localStorage.setItem(PORTFOLIO_COLUMN_PREF_KEY, JSON.stringify(portfolioColumnPrefs));
+  }
+
+  function isPortfolioColumnVisible(index) {
+    const key = String(index);
+    if (!(key in portfolioColumnPrefs)) return true;
+    return portfolioColumnPrefs[key] !== false;
+  }
+
+  function applyPortfolioColumnPrefs() {
+    if (!portfolioTable) return;
+    const headerCells = Array.from(portfolioTable.querySelectorAll("thead tr th"));
+    PORTFOLIO_COLUMNS.forEach((col) => {
+      const cell = headerCells[col.index - 1];
+      if (cell) cell.classList.toggle("col-hidden", !isPortfolioColumnVisible(col.index));
+    });
+
+    const bodyRows = Array.from(portfolioTable.querySelectorAll("tbody tr.portfolio-row, tbody tr.portfolio-total-row"));
+    bodyRows.forEach((row) => {
+      const cells = Array.from(row.children || []);
+      PORTFOLIO_COLUMNS.forEach((col) => {
+        const cell = cells[col.index - 1];
+        if (cell) cell.classList.toggle("col-hidden", !isPortfolioColumnVisible(col.index));
+      });
+    });
+  }
+
+  function closePortfolioColumnPopup() {
+    portfolioColumnPopup.hidden = true;
+    portfolioColumnPopup.innerHTML = "";
+    portfolioColumnPopupAnchor = null;
+  }
+
+  function positionPortfolioColumnPopup(anchor) {
+    if (!anchor) return;
+    const margin = 8;
+    const rect = anchor.getBoundingClientRect();
+    const popupRect = portfolioColumnPopup.getBoundingClientRect();
+    let left = rect.left;
+    let top = rect.bottom + 6;
+    if (left + popupRect.width > window.innerWidth - margin) {
+      left = window.innerWidth - margin - popupRect.width;
+    }
+    if (left < margin) left = margin;
+    if (top + popupRect.height > window.innerHeight - margin) {
+      top = rect.top - popupRect.height - 6;
+    }
+    if (top < margin) top = margin;
+    portfolioColumnPopup.style.left = `${left}px`;
+    portfolioColumnPopup.style.top = `${top}px`;
+  }
+
+  function openPortfolioColumnPopup(anchor) {
+    const optionsHtml = PORTFOLIO_COLUMNS.map((col) => `
+      <label class="th-filter-option">
+        <span class="th-filter-option-text">${escapeHtml(col.label)}</span>
+        <input type="checkbox" value="${col.index}" ${isPortfolioColumnVisible(col.index) ? "checked" : ""} />
+      </label>
+    `).join("");
+    portfolioColumnPopup.innerHTML = `
+      <div class="th-filter-menu-head">
+        <strong class="th-filter-menu-title">Columns</strong>
+      </div>
+      <div class="th-filter-menu-actions">
+        <button type="button" class="secondary portfolio-col-all">All</button>
+      </div>
+      <div class="th-filter-menu-options">${optionsHtml}</div>
+      <div class="th-filter-menu-foot">
+        <button type="button" class="portfolio-col-apply">Apply</button>
+      </div>
+    `;
+    portfolioColumnPopup.querySelector(".portfolio-col-all")?.addEventListener("click", () => {
+      portfolioColumnPopup.querySelectorAll('input[type="checkbox"]').forEach((input) => {
+        input.checked = true;
+      });
+    });
+    portfolioColumnPopup.querySelector(".portfolio-col-apply")?.addEventListener("click", () => {
+      const nextPrefs = {};
+      portfolioColumnPopup.querySelectorAll('input[type="checkbox"]').forEach((input) => {
+        const idx = String(input.value || "");
+        if (!idx) return;
+        nextPrefs[idx] = !!input.checked;
+      });
+      portfolioColumnPrefs = nextPrefs;
+      savePortfolioColumnPrefs();
+      applyPortfolioColumnPrefs();
+      closePortfolioColumnPopup();
+    });
+    portfolioColumnPopup.hidden = false;
+    portfolioColumnPopupAnchor = anchor;
+    positionPortfolioColumnPopup(anchor);
+  }
+
+  async function loadPortfolioMarketStatus() {
+    if (!portfolioMarketStatus) return;
+    try {
+      const status = await requestJson("/api/market-data/status", "GET");
+      const quoteAge = status.quote_latest_age_sec;
+      const fxAge = status.fx_latest_age_sec;
+      const quoteText = quoteAge === null || quoteAge === undefined ? "N/A" : `${quoteAge}s`;
+      const fxText = fxAge === null || fxAge === undefined ? "N/A" : `${fxAge}s`;
+      portfolioMarketStatus.textContent = `Market data: Quotes ${status.quote_entries} (age ${quoteText}), FX ${status.fx_entries} (age ${fxText})`;
+    } catch (_) {
+      portfolioMarketStatus.textContent = "Market data: status unavailable";
+    }
+  }
+
   const portfolioFilterDefs = [
     { key: "ticker", getter: (row) => row.dataset.filterTicker || "" },
     {
@@ -467,6 +636,43 @@
   }
 
   initPortfolioHeaderFilters();
+  loadPortfolioColumnPrefs();
+  applyPortfolioColumnPrefs();
+  loadPortfolioMarketStatus();
+
+  portfolioColBtn?.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const reopening = !portfolioColumnPopup.hidden && portfolioColumnPopupAnchor === portfolioColBtn;
+    closePortfolioColumnPopup();
+    if (reopening) return;
+    openPortfolioColumnPopup(portfolioColBtn);
+  });
+
+  portfolioMarketRefreshBtn?.addEventListener("click", async () => {
+    try {
+      portfolioMarketRefreshBtn.disabled = true;
+      await requestJson("/api/market-data/refresh", "POST");
+      await loadPortfolioMarketStatus();
+      window.location.reload();
+    } catch (err) {
+      window.alert(`Refresh failed: ${err.message}`);
+    } finally {
+      portfolioMarketRefreshBtn.disabled = false;
+    }
+  });
+
+  document.addEventListener("click", (e) => {
+    if (!e.target.closest(".th-filter-popup") && !e.target.closest("#portfolio-col-btn")) {
+      closePortfolioColumnPopup();
+    }
+  });
+  window.addEventListener("resize", closePortfolioColumnPopup);
+  window.addEventListener("scroll", () => {
+    if (!portfolioColumnPopup.hidden && portfolioColumnPopupAnchor) {
+      positionPortfolioColumnPopup(portfolioColumnPopupAnchor);
+    }
+  }, true);
 
   {% if can_write %}
   async function postJson(url, payload) {

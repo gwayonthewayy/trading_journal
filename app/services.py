@@ -25,6 +25,7 @@ from app.models import Event, EventType, Lot, SellAllocation, Setting, Symbol, T
 from app.schemas import (
     BuyRequest,
     CashflowRequest,
+    DuplicateCheckRequest,
     EventUpdateRequest,
     LotSLUpdateRequest,
     ReviewRequest,
@@ -56,6 +57,8 @@ QUOTE_CACHE_TTL_SECONDS = 60 * 5
 NAME_CACHE_TTL_SECONDS = 60 * 60 * 24
 WIN_RATE_BREAKEVEN_EPSILON_USD = 10.0
 RETURN_DENOMINATOR_MIN_BASE = 100.0
+DUPLICATE_TS_WINDOW_SECONDS = 5 * 60
+DUPLICATE_SCAN_DAYS = 30
 BREAKEVEN_REASON_PATTERNS = (
     re.compile(r"\bbe\b", re.IGNORECASE),
     re.compile(r"break[\s_-]?even", re.IGNORECASE),
@@ -110,6 +113,22 @@ def _split_image_urls(value: str | None) -> list[str]:
             continue
         urls.append(candidate)
     return urls
+
+
+def _parse_event_type(value: str | None) -> EventType:
+    normalized = str(value or "").strip().upper()
+    if not normalized:
+        raise HTTPException(status_code=400, detail="event_type is required")
+    try:
+        return EventType(normalized)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="invalid event_type") from exc
+
+
+def _numbers_almost_equal(left: float | None, right: float | None, eps: float = 1e-9) -> bool:
+    if left is None or right is None:
+        return False
+    return abs(float(left) - float(right)) <= eps
 
 
 def _get_base_currency(session: Session) -> str:
@@ -795,6 +814,71 @@ def create_review(session: Session, req: ReviewRequest) -> dict[str, Any]:
     session.flush()
 
     return {"event_id": event.id, "trade_group_id": group.id}
+
+
+def check_duplicate_event(session: Session, req: DuplicateCheckRequest) -> dict[str, Any]:
+    event_type = _parse_event_type(req.event_type)
+    ticker = normalize_ticker(req.ticker) if req.ticker else None
+    market = _normalize_upper_optional(req.market)
+    currency = _normalize_upper_optional(req.currency)
+    ts = _normalize_optional_ts(req.ts)
+
+    if ts is not None:
+        start_ts = ts - timedelta(days=1)
+    else:
+        start_ts = datetime.utcnow() - timedelta(days=DUPLICATE_SCAN_DAYS)
+
+    stmt = (
+        select(Event)
+        .where(
+            Event.type == event_type,
+            Event.ts >= start_ts,
+        )
+        .order_by(Event.ts.desc(), Event.id.desc())
+    )
+    if ticker:
+        stmt = stmt.where(Event.ticker == ticker)
+
+    candidates = session.exec(stmt).all()
+    matches: list[dict[str, Any]] = []
+    for event in candidates:
+        if market and _normalize_upper_optional(event.market) != market:
+            continue
+        if currency and _normalize_upper_optional(event.currency) != currency:
+            continue
+        if ts is not None:
+            delta_seconds = abs((event.ts - ts).total_seconds())
+            if delta_seconds > DUPLICATE_TS_WINDOW_SECONDS:
+                continue
+        if req.qty is not None and not _numbers_almost_equal(event.qty, req.qty):
+            continue
+        if req.price is not None and not _numbers_almost_equal(event.price, req.price):
+            continue
+        if req.cash_amount is not None and event_type == EventType.CASHFLOW:
+            if not _numbers_almost_equal(event.cash_amount, req.cash_amount):
+                continue
+        matches.append(
+            {
+                "event_id": event.id,
+                "ts": event.ts.isoformat() if event.ts else None,
+                "type": event.type.value,
+                "ticker": event.ticker,
+                "market": event.market,
+                "currency": event.currency,
+                "qty": event.qty,
+                "price": event.price,
+                "cash_amount": event.cash_amount,
+            }
+        )
+        if len(matches) >= 5:
+            break
+
+    return {
+        "event_type": event_type.value,
+        "is_duplicate": len(matches) > 0,
+        "duplicate_count": len(matches),
+        "matches": matches,
+    }
 
 
 def _recompute_sell_realized_pnl(session: Session, event: Event) -> float:
@@ -2108,6 +2192,55 @@ def _get_latest_quote_price(ticker: str, market: str | None) -> float | None:
         _quote_cache[symbol] = {"fetched_at": now_ts, "price": latest_price}
         return latest_price
     return None
+
+
+def _cache_latest_info(cache: dict[str, dict[str, Any]]) -> tuple[int, str | None, int | None]:
+    count = len(cache)
+    if count == 0:
+        return 0, None, None
+    latest_ts = max(float(entry.get("fetched_at", 0.0) or 0.0) for entry in cache.values())
+    if latest_ts <= 0:
+        return count, None, None
+    latest_dt = datetime.utcfromtimestamp(latest_ts)
+    age_sec = int(max(0.0, datetime.utcnow().timestamp() - latest_ts))
+    return count, latest_dt.isoformat() + "Z", age_sec
+
+
+def get_market_data_cache_status() -> dict[str, Any]:
+    quote_count, quote_latest_at, quote_age_sec = _cache_latest_info(_quote_cache)
+    fx_count, fx_latest_at, fx_age_sec = _cache_latest_info(_fx_cache)
+    name_count, name_latest_at, name_age_sec = _cache_latest_info(_name_cache)
+    return {
+        "quote_entries": quote_count,
+        "quote_latest_at": quote_latest_at,
+        "quote_latest_age_sec": quote_age_sec,
+        "fx_entries": fx_count,
+        "fx_latest_at": fx_latest_at,
+        "fx_latest_age_sec": fx_age_sec,
+        "name_entries": name_count,
+        "name_latest_at": name_latest_at,
+        "name_latest_age_sec": name_age_sec,
+        "updated_at": datetime.utcnow().isoformat() + "Z",
+    }
+
+
+def refresh_market_data_cache(clear_name_cache: bool = False) -> dict[str, Any]:
+    quote_before = len(_quote_cache)
+    fx_before = len(_fx_cache)
+    name_before = len(_name_cache)
+    _quote_cache.clear()
+    _fx_cache.clear()
+    if clear_name_cache:
+        _name_cache.clear()
+    return {
+        "ok": True,
+        "cleared_quote_entries": quote_before,
+        "cleared_fx_entries": fx_before,
+        "cleared_name_entries": name_before if clear_name_cache else 0,
+        "clear_name_cache": clear_name_cache,
+        "refreshed_at": datetime.utcnow().isoformat() + "Z",
+        "status": get_market_data_cache_status(),
+    }
 
 
 def _current_open_market_value(session: Session) -> float:

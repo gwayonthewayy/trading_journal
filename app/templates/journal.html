@@ -223,6 +223,16 @@
       <h3>Event Journal</h3>
       <p>기록 검색과 타입별 필터</p>
     </div>
+    <div class="table-tool-row">
+      <button id="journal-col-btn" type="button" class="secondary">Columns</button>
+      <button id="journal-save-preset-btn" type="button" class="secondary">Save Filter</button>
+      <button id="journal-load-preset-btn" type="button" class="secondary">Load Filter</button>
+      <button id="journal-clear-preset-btn" type="button" class="secondary">Clear Saved</button>
+      {% if can_write %}
+      <button id="market-refresh-btn" type="button" class="secondary">Refresh Price/FX</button>
+      {% endif %}
+      <span id="market-data-status-text" class="small">Market data: ...</span>
+    </div>
   </div>
 
   <div class="journal-tools">
@@ -268,6 +278,7 @@
     {% endif %}
   </div>
   <p id="journal-summary" class="small">Showing {{ data.events|length }} / {{ data.filtered_events }} filtered events ({{ data.total_all_events }} total)</p>
+  <div id="action-feedback" class="action-feedback" hidden></div>
   {% if can_write %}
     <p class="small">Tip: 이벤트 행을 클릭하면 선택됩니다. 선택 후 갤러리/카메라 업로드를 누르세요.</p>
     <div class="card quick-attach-panel">
@@ -595,6 +606,319 @@
     return jsonRequest(url, "POST", payload);
   }
 
+  const JOURNAL_COLUMN_PREF_KEY = "tj_journal_columns_v1";
+  const JOURNAL_FILTER_PRESET_KEY = "tj_journal_filter_preset_v1";
+  const JOURNAL_LAST_ACTION_KEY = "tj_journal_last_action_v1";
+  const JOURNAL_COLUMNS = [
+    { index: 1, label: "TS" },
+    { index: 2, label: "Ticker" },
+    { index: 3, label: "Market" },
+    { index: 4, label: "Currency" },
+    { index: 5, label: "Name" },
+    { index: 6, label: "Type" },
+    { index: 7, label: "W/L" },
+    { index: 8, label: "Qty" },
+    { index: 9, label: "Price" },
+    { index: 10, label: "SL/TP" },
+    { index: 11, label: "Amount" },
+    { index: 12, label: "Unrealized PnL" },
+    { index: 13, label: "Realized PnL" },
+    { index: 14, label: "Realized PnL (Local)" },
+    { index: 15, label: "Open Risk" },
+    { index: 16, label: "Reason / Note" },
+    { index: 17, label: "Trade Group" },
+    { index: 18, label: "Review" },
+    { index: 19, label: "Image" },
+    { index: 20, label: "Actions" },
+  ];
+  let journalColumnPrefs = {};
+  const journalColumnPopup = document.createElement("div");
+  journalColumnPopup.className = "th-filter-menu th-filter-popup";
+  journalColumnPopup.hidden = true;
+  document.body.appendChild(journalColumnPopup);
+  let journalColumnPopupAnchor = null;
+
+  function loadJournalColumnPrefs() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(JOURNAL_COLUMN_PREF_KEY) || "{}");
+      if (saved && typeof saved === "object") {
+        journalColumnPrefs = saved;
+      } else {
+        journalColumnPrefs = {};
+      }
+    } catch (_) {
+      journalColumnPrefs = {};
+    }
+  }
+
+  function saveJournalColumnPrefs() {
+    localStorage.setItem(JOURNAL_COLUMN_PREF_KEY, JSON.stringify(journalColumnPrefs));
+  }
+
+  function isJournalColumnVisible(index) {
+    const key = String(index);
+    if (!(key in journalColumnPrefs)) return true;
+    return journalColumnPrefs[key] !== false;
+  }
+
+  function applyJournalColumnPrefs() {
+    if (!journalTable) return;
+    const rows = journalTable.querySelectorAll("tr");
+    rows.forEach((row) => {
+      const cells = Array.from(row.children || []);
+      JOURNAL_COLUMNS.forEach((col) => {
+        const cell = cells[col.index - 1];
+        if (!cell) return;
+        cell.classList.toggle("col-hidden", !isJournalColumnVisible(col.index));
+      });
+    });
+  }
+
+  function closeJournalColumnPopup() {
+    journalColumnPopup.hidden = true;
+    journalColumnPopup.innerHTML = "";
+    journalColumnPopupAnchor = null;
+  }
+
+  function positionJournalColumnPopup(anchor) {
+    if (!anchor) return;
+    const margin = 8;
+    const rect = anchor.getBoundingClientRect();
+    const popupRect = journalColumnPopup.getBoundingClientRect();
+    let left = rect.left;
+    let top = rect.bottom + 6;
+    if (left + popupRect.width > window.innerWidth - margin) {
+      left = window.innerWidth - margin - popupRect.width;
+    }
+    if (left < margin) left = margin;
+    if (top + popupRect.height > window.innerHeight - margin) {
+      top = rect.top - popupRect.height - 6;
+    }
+    if (top < margin) top = margin;
+    journalColumnPopup.style.left = `${left}px`;
+    journalColumnPopup.style.top = `${top}px`;
+  }
+
+  function openJournalColumnPopup(anchor) {
+    const optionsHtml = JOURNAL_COLUMNS.map((col) => `
+      <label class="th-filter-option">
+        <span class="th-filter-option-text">${escapeHtml(col.label)}</span>
+        <input type="checkbox" value="${col.index}" ${isJournalColumnVisible(col.index) ? "checked" : ""} />
+      </label>
+    `).join("");
+    journalColumnPopup.innerHTML = `
+      <div class="th-filter-menu-head">
+        <strong class="th-filter-menu-title">Columns</strong>
+      </div>
+      <div class="th-filter-menu-actions">
+        <button type="button" class="secondary journal-col-all">All</button>
+        <button type="button" class="secondary journal-col-default">Default</button>
+      </div>
+      <div class="th-filter-menu-options">${optionsHtml}</div>
+      <div class="th-filter-menu-foot">
+        <button type="button" class="journal-col-apply">Apply</button>
+      </div>
+    `;
+    journalColumnPopup.querySelector(".journal-col-all")?.addEventListener("click", () => {
+      journalColumnPopup.querySelectorAll('input[type="checkbox"]').forEach((input) => {
+        input.checked = true;
+      });
+    });
+    journalColumnPopup.querySelector(".journal-col-default")?.addEventListener("click", () => {
+      journalColumnPopup.querySelectorAll('input[type="checkbox"]').forEach((input) => {
+        input.checked = true;
+      });
+    });
+    journalColumnPopup.querySelector(".journal-col-apply")?.addEventListener("click", () => {
+      const nextPrefs = {};
+      journalColumnPopup.querySelectorAll('input[type="checkbox"]').forEach((input) => {
+        const idx = String(input.value || "");
+        if (!idx) return;
+        nextPrefs[idx] = !!input.checked;
+      });
+      journalColumnPrefs = nextPrefs;
+      saveJournalColumnPrefs();
+      applyJournalColumnPrefs();
+      closeJournalColumnPopup();
+    });
+    journalColumnPopup.hidden = false;
+    journalColumnPopupAnchor = anchor;
+    positionJournalColumnPopup(anchor);
+  }
+
+  function saveJournalFilterPreset() {
+    const payload = {
+      q: journalState.q || "",
+      event_type: journalState.event_type || "",
+      date_from: journalState.date_from || "",
+      date_to: journalState.date_to || "",
+      hf_ticker: journalState.hf_ticker || [],
+      hf_market: journalState.hf_market || [],
+      hf_currency: journalState.hf_currency || [],
+      hf_symbol_name: journalState.hf_symbol_name || [],
+      hf_type: journalState.hf_type || [],
+      hf_win_lose: journalState.hf_win_lose || [],
+    };
+    localStorage.setItem(JOURNAL_FILTER_PRESET_KEY, JSON.stringify(payload));
+  }
+
+  function loadJournalFilterPreset() {
+    const raw = localStorage.getItem(JOURNAL_FILTER_PRESET_KEY);
+    if (!raw) return false;
+    try {
+      const payload = JSON.parse(raw);
+      if (!payload || typeof payload !== "object") return false;
+      Object.assign(journalState, {
+        q: payload.q || "",
+        event_type: payload.event_type || "",
+        date_from: payload.date_from || "",
+        date_to: payload.date_to || "",
+        hf_ticker: Array.isArray(payload.hf_ticker) ? payload.hf_ticker : [],
+        hf_market: Array.isArray(payload.hf_market) ? payload.hf_market : [],
+        hf_currency: Array.isArray(payload.hf_currency) ? payload.hf_currency : [],
+        hf_symbol_name: Array.isArray(payload.hf_symbol_name) ? payload.hf_symbol_name : [],
+        hf_type: Array.isArray(payload.hf_type) ? payload.hf_type : [],
+        hf_win_lose: Array.isArray(payload.hf_win_lose) ? payload.hf_win_lose : [],
+      });
+      updateFilterFormFromState();
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function clearJournalFilterPreset() {
+    localStorage.removeItem(JOURNAL_FILTER_PRESET_KEY);
+  }
+
+  function setLastCreateAction(action) {
+    if (!action || !action.event_id) return;
+    sessionStorage.setItem(JOURNAL_LAST_ACTION_KEY, JSON.stringify(action));
+  }
+
+  function clearLastCreateAction() {
+    sessionStorage.removeItem(JOURNAL_LAST_ACTION_KEY);
+  }
+
+  function renderActionFeedback() {
+    if (!actionFeedback) return;
+    if (!canWrite) {
+      actionFeedback.hidden = true;
+      actionFeedback.innerHTML = "";
+      return;
+    }
+    const raw = sessionStorage.getItem(JOURNAL_LAST_ACTION_KEY);
+    if (!raw) {
+      actionFeedback.hidden = true;
+      actionFeedback.innerHTML = "";
+      return;
+    }
+    let action;
+    try {
+      action = JSON.parse(raw);
+    } catch (_) {
+      clearLastCreateAction();
+      actionFeedback.hidden = true;
+      actionFeedback.innerHTML = "";
+      return;
+    }
+    const eventId = Number(action.event_id || 0);
+    if (!eventId) {
+      clearLastCreateAction();
+      actionFeedback.hidden = true;
+      actionFeedback.innerHTML = "";
+      return;
+    }
+    actionFeedback.hidden = false;
+    actionFeedback.innerHTML = `
+      <span><strong>${escapeHtml(action.label || "Saved")}</strong> (event #${escapeHtml(eventId)})</span>
+      <button type="button" id="action-undo-btn" class="secondary">Undo</button>
+      <button type="button" id="action-dismiss-btn" class="secondary">Dismiss</button>
+    `;
+    actionFeedback.querySelector("#action-dismiss-btn")?.addEventListener("click", () => {
+      clearLastCreateAction();
+      renderActionFeedback();
+    });
+    actionFeedback.querySelector("#action-undo-btn")?.addEventListener("click", async () => {
+      try {
+        await jsonRequest(`/api/events/${eventId}`, "DELETE");
+        clearLastCreateAction();
+        window.location.reload();
+      } catch (err) {
+        window.alert(`Undo failed: ${err.message}`);
+      }
+    });
+  }
+
+  function summarizePayload(eventType, payload) {
+    const type = String(eventType || "").toUpperCase();
+    if (type === "BUY") {
+      return `BUY ${payload.ticker || ""} | qty ${payload.qty} @ ${payload.price} ${payload.currency || ""}`;
+    }
+    if (type === "SELL") {
+      const qty = Array.isArray(payload.allocations)
+        ? payload.allocations.reduce((acc, item) => acc + Number(item.qty_sold || 0), 0)
+        : "";
+      return `SELL ${payload.ticker || ""} | qty ${qty} @ ${payload.price} ${payload.currency || ""}`;
+    }
+    if (type === "CASHFLOW") {
+      return `CASHFLOW ${payload.cash_amount} ${payload.currency || ""}`;
+    }
+    if (type === "SL_UPDATE") {
+      return `SL_UPDATE lot#${payload.lot_id}`;
+    }
+    return type;
+  }
+
+  async function checkDuplicateWithPrompt(eventType, payload) {
+    const type = String(eventType || "").toUpperCase();
+    const duplicatePayload = {
+      event_type: type,
+      ticker: payload.ticker || null,
+      market: payload.market || null,
+      currency: payload.currency || null,
+      ts: payload.ts || null,
+      qty: payload.qty ?? (
+        Array.isArray(payload.allocations)
+          ? payload.allocations.reduce((acc, item) => acc + Number(item.qty_sold || 0), 0)
+          : null
+      ),
+      price: payload.price ?? null,
+      cash_amount: payload.cash_amount ?? null,
+    };
+
+    let duplicateInfo = null;
+    try {
+      duplicateInfo = await postJson("/api/events/duplicate-check", duplicatePayload);
+    } catch (_) {
+      duplicateInfo = null;
+    }
+
+    let message = `Create event?\n\n${summarizePayload(type, payload)}`;
+    if (duplicateInfo && duplicateInfo.is_duplicate) {
+      message += `\n\nWarning: ${duplicateInfo.duplicate_count} similar event(s) found.`;
+      const first = Array.isArray(duplicateInfo.matches) ? duplicateInfo.matches[0] : null;
+      if (first && first.event_id) {
+        message += `\nMost recent: #${first.event_id} ${first.ts || ""}`;
+      }
+    }
+    return window.confirm(message);
+  }
+
+  async function loadMarketDataStatus() {
+    if (!marketDataStatusText) return;
+    try {
+      const status = await jsonRequest("/api/market-data/status", "GET");
+      const quoteAge = status.quote_latest_age_sec;
+      const fxAge = status.fx_latest_age_sec;
+      const quoteText = quoteAge === null || quoteAge === undefined ? "N/A" : `${quoteAge}s`;
+      const fxText = fxAge === null || fxAge === undefined ? "N/A" : `${fxAge}s`;
+      marketDataStatusText.textContent = `Market data: Quotes ${status.quote_entries} (age ${quoteText}), FX ${status.fx_entries} (age ${fxText})`;
+    } catch (_) {
+      marketDataStatusText.textContent = "Market data: status unavailable";
+    }
+  }
+
   async function bindJsonForm(formId, url, errorId, numericFields) {
     const form = document.getElementById(formId);
     const errorBox = document.getElementById(errorId);
@@ -680,6 +1004,47 @@
 
     addAllocationRow("");
 
+    document.getElementById("buy-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const errorBox = document.getElementById("buy-error");
+      errorBox.textContent = "";
+      try {
+        const form = e.target;
+        const payload = parsePayload(form, ["qty", "price", "fee", "sl", "tp", "trade_group_id", "fx_rate_to_base"]);
+        if (payload.ticker) payload.ticker = String(payload.ticker).trim().toUpperCase();
+        const ok = await checkDuplicateWithPrompt("BUY", payload);
+        if (!ok) return;
+        const result = await postJson("/api/buy", payload);
+        setLastCreateAction({
+          event_id: result.event_id,
+          label: "BUY created",
+        });
+        window.location.reload();
+      } catch (err) {
+        errorBox.textContent = `Error: ${err.message}`;
+      }
+    });
+
+    document.getElementById("cashflow-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const errorBox = document.getElementById("cashflow-error");
+      errorBox.textContent = "";
+      try {
+        const form = e.target;
+        const payload = parsePayload(form, ["cash_amount", "fx_rate_to_base"]);
+        const ok = await checkDuplicateWithPrompt("CASHFLOW", payload);
+        if (!ok) return;
+        const result = await postJson("/api/cashflow", payload);
+        setLastCreateAction({
+          event_id: result.event_id,
+          label: "CASHFLOW created",
+        });
+        window.location.reload();
+      } catch (err) {
+        errorBox.textContent = `Error: ${err.message}`;
+      }
+    });
+
     document.getElementById("sell-form").addEventListener("submit", async (e) => {
       e.preventDefault();
       const errorBox = document.getElementById("sell-error");
@@ -720,7 +1085,13 @@
           payload.allocations.push({ lot_id: Number(lotId), qty_sold: Number(qty) });
         }
 
-        await postJson("/api/sell", payload);
+        const ok = await checkDuplicateWithPrompt("SELL", payload);
+        if (!ok) return;
+        const result = await postJson("/api/sell", payload);
+        setLastCreateAction({
+          event_id: result.event_id,
+          label: "SELL created",
+        });
         window.location.reload();
       } catch (err) {
         errorBox.textContent = `Error: ${err.message}`;
@@ -751,15 +1122,18 @@
         if (form.note.value) payload.note = form.note.value;
         if (form.ts.value) payload.ts = form.ts.value;
 
-        await postJson("/api/lot/sl", payload);
+        const ok = window.confirm(`Create SL/TP update?\n\n${summarizePayload("SL_UPDATE", payload)}`);
+        if (!ok) return;
+        const result = await postJson("/api/lot/sl", payload);
+        setLastCreateAction({
+          event_id: result.event_id,
+          label: "SL/TP update created",
+        });
         window.location.reload();
       } catch (err) {
         errorBox.textContent = `Error: ${err.message}`;
       }
     });
-
-    bindJsonForm("buy-form", "/api/buy", "buy-error", ["qty", "price", "fee", "sl", "tp", "trade_group_id", "fx_rate_to_base"]);
-    bindJsonForm("cashflow-form", "/api/cashflow", "cashflow-error", ["cash_amount", "fx_rate_to_base"]);
   }
 
   const journalTable = document.getElementById("journal-table");
@@ -772,6 +1146,13 @@
   const journalPageInfo = document.getElementById("journal-page-info");
   const journalPagination = document.getElementById("journal-pagination");
   const activeFilterBadges = document.getElementById("active-filter-badges");
+  const actionFeedback = document.getElementById("action-feedback");
+  const journalColBtn = document.getElementById("journal-col-btn");
+  const journalSavePresetBtn = document.getElementById("journal-save-preset-btn");
+  const journalLoadPresetBtn = document.getElementById("journal-load-preset-btn");
+  const journalClearPresetBtn = document.getElementById("journal-clear-preset-btn");
+  const marketRefreshBtn = document.getElementById("market-refresh-btn");
+  const marketDataStatusText = document.getElementById("market-data-status-text");
 
   const journalState = {{ {
     "page": data.page,
@@ -1321,6 +1702,8 @@
       renderJournalPagination(data);
       updateJournalHeaderFilterButtons();
       applyJournalHeaderFilters();
+      applyJournalColumnPrefs();
+      renderActionFeedback();
 
       if (pushUrl) {
         const url = `/journal?${buildJournalParams(journalState).toString()}`;
@@ -1380,6 +1763,64 @@
     updateFilterFormFromState();
     await loadJournalPage(journalState.page, false);
   });
+
+  loadJournalColumnPrefs();
+  applyJournalColumnPrefs();
+  renderActionFeedback();
+  loadMarketDataStatus();
+
+  journalColBtn?.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const reopening = !journalColumnPopup.hidden && journalColumnPopupAnchor === journalColBtn;
+    closeJournalColumnPopup();
+    if (reopening) return;
+    openJournalColumnPopup(journalColBtn);
+  });
+
+  journalSavePresetBtn?.addEventListener("click", () => {
+    saveJournalFilterPreset();
+    window.alert("Filter preset saved.");
+  });
+
+  journalLoadPresetBtn?.addEventListener("click", async () => {
+    const ok = loadJournalFilterPreset();
+    if (!ok) {
+      window.alert("Saved preset not found.");
+      return;
+    }
+    await loadJournalPage(1, true);
+  });
+
+  journalClearPresetBtn?.addEventListener("click", () => {
+    clearJournalFilterPreset();
+    window.alert("Saved preset cleared.");
+  });
+
+  marketRefreshBtn?.addEventListener("click", async () => {
+    try {
+      marketRefreshBtn.disabled = true;
+      await jsonRequest("/api/market-data/refresh", "POST");
+      await loadMarketDataStatus();
+      await loadJournalPage(journalState.page, false);
+    } catch (err) {
+      window.alert(`Refresh failed: ${err.message}`);
+    } finally {
+      marketRefreshBtn.disabled = false;
+    }
+  });
+
+  document.addEventListener("click", (e) => {
+    if (!e.target.closest(".th-filter-popup") && !e.target.closest("#journal-col-btn")) {
+      closeJournalColumnPopup();
+    }
+  });
+  window.addEventListener("resize", closeJournalColumnPopup);
+  window.addEventListener("scroll", () => {
+    if (!journalColumnPopup.hidden && journalColumnPopupAnchor) {
+      positionJournalColumnPopup(journalColumnPopupAnchor);
+    }
+  }, true);
 
   initJournalHeaderFilters();
 

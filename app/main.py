@@ -39,6 +39,7 @@ from app.services import (
     build_benchmark_returns,
     build_fx_history,
     build_journal,
+    build_monthly_check_page,
     build_portfolio,
     build_stats,
     build_trade_detail,
@@ -623,6 +624,23 @@ def page_stats(request: Request, session: Session = Depends(get_session)) -> HTM
             "request": request,
             "data": data,
             "benchmark_prefetch": benchmark_prefetch,
+            **_template_auth_context(request),
+        },
+    )
+
+
+@app.get("/monthly-check", response_class=HTMLResponse)
+def page_monthly_check(request: Request, session: Session = Depends(get_session)) -> HTMLResponse:
+    role = _require_viewer_page_role(request)
+    if role is None:
+        return RedirectResponse(url="/access", status_code=303)
+
+    data = build_monthly_check_page(session)
+    return templates.TemplateResponse(
+        "monthly_check.html",
+        {
+            "request": request,
+            "data": data,
             **_template_auth_context(request),
         },
     )

@@ -16,6 +16,7 @@ from urllib.error import URLError
 from urllib.parse import quote
 from urllib.request import Request, urlopen
 from uuid import uuid4
+from xml.etree import ElementTree as ET
 
 from fastapi import HTTPException
 from sqlmodel import Session, select
@@ -55,10 +56,12 @@ BENCHMARK_CACHE_TTL_SECONDS = 60 * 60 * 6
 FX_CACHE_TTL_SECONDS = 60 * 30
 QUOTE_CACHE_TTL_SECONDS = 60 * 5
 NAME_CACHE_TTL_SECONDS = 60 * 60 * 24
+DAILY_HIGH_CACHE_TTL_SECONDS = 60 * 60 * 6
 WIN_RATE_BREAKEVEN_EPSILON_USD = 10.0
 RETURN_DENOMINATOR_MIN_BASE = 100.0
 DUPLICATE_TS_WINDOW_SECONDS = 5 * 60
 DUPLICATE_SCAN_DAYS = 30
+MONTHLY_CHECK_START_MONTH = date(2025, 1, 1)
 BREAKEVEN_REASON_PATTERNS = (
     re.compile(r"\bbe\b", re.IGNORECASE),
     re.compile(r"break[\s_-]?even", re.IGNORECASE),
@@ -70,12 +73,40 @@ _benchmark_cache: dict[str, dict[str, Any]] = {}
 _fx_cache: dict[str, dict[str, Any]] = {}
 _quote_cache: dict[str, dict[str, Any]] = {}
 _name_cache: dict[str, dict[str, Any]] = {}
+_daily_high_cache: dict[str, dict[str, Any]] = {}
+
+MONTHLY_CHECK_METRICS: list[dict[str, str]] = [
+    {"key": "trade_count", "label": "Trades", "format": "count"},
+    {"key": "avg_profit_pct", "label": "Avg Profit", "format": "pct"},
+    {"key": "avg_loss_pct", "label": "Avg Loss", "format": "pct"},
+    {"key": "win_rate_pct", "label": "Win Rate", "format": "pct"},
+    {"key": "success_failure_ratio", "label": "Success/Failure", "format": "ratio"},
+    {"key": "adjusted_success_failure_ratio", "label": "Adj. Success/Failure", "format": "ratio"},
+    {"key": "max_profit_pct", "label": "Max Profit", "format": "pct"},
+    {"key": "max_loss_pct", "label": "Max Loss", "format": "pct"},
+    {"key": "avg_win_hold_days", "label": "Avg Win Hold Days", "format": "days"},
+    {"key": "avg_loss_hold_days", "label": "Avg Loss Hold Days", "format": "days"},
+]
 
 
-def normalize_ticker(ticker: str) -> str:
+def _normalize_hk_ticker(value: str) -> str:
+    raw = (value or "").strip().upper()
+    if raw.endswith(".HK"):
+        raw = raw[:-3]
+    digits = "".join(ch for ch in raw if ch.isdigit())
+    if digits:
+        if len(digits) <= 5:
+            return digits.zfill(5)
+        return digits
+    return (value or "").strip().upper()
+
+
+def normalize_ticker(ticker: str, market: str | None = None) -> str:
     value = ticker.strip().upper()
     if not value:
         raise HTTPException(status_code=400, detail="ticker is required")
+    if _normalize_upper_optional(market) == "HK":
+        return _normalize_hk_ticker(value)
     return value
 
 
@@ -493,10 +524,10 @@ def _sync_lot_snapshots_from_events(session: Session) -> None:
 
 
 def create_buy(session: Session, req: BuyRequest) -> dict[str, Any]:
-    ticker = normalize_ticker(req.ticker)
+    market = _normalize_upper_optional(req.market)
+    ticker = normalize_ticker(req.ticker, market)
     event_ts = _normalize_optional_ts(req.ts)
     base_currency = _get_base_currency(session)
-    market = _normalize_upper_optional(req.market)
     exchange = _normalize_upper_optional(req.exchange)
     currency = _normalize_upper_optional(req.currency) or base_currency
     fx_rate_to_base = _resolve_fx_rate_to_base(
@@ -587,7 +618,8 @@ def _compute_realized_pnl_from_allocations(
 
 
 def create_sell(session: Session, req: SellRequest) -> dict[str, Any]:
-    ticker = normalize_ticker(req.ticker)
+    requested_market = _normalize_upper_optional(req.market)
+    ticker = normalize_ticker(req.ticker, requested_market)
     event_ts = _normalize_optional_ts(req.ts)
     effective_ts = event_ts or datetime.utcnow()
     base_currency = _get_base_currency(session)
@@ -606,6 +638,14 @@ def create_sell(session: Session, req: SellRequest) -> dict[str, Any]:
     lots = session.exec(select(Lot).where(Lot.id.in_(lot_ids))).all()
     if len(lots) != len(lot_ids):
         raise HTTPException(status_code=400, detail="one or more lots do not exist")
+
+    if requested_market is None:
+        inferred_markets = {
+            m for m in (_normalize_upper_optional(lot.market) for lot in lots) if m is not None
+        }
+        if len(inferred_markets) == 1:
+            ticker = normalize_ticker(ticker, next(iter(inferred_markets)))
+
     lot_trade_groups = {lot.trade_group_id for lot in lots}
     if len(lot_trade_groups) > 1:
         raise HTTPException(
@@ -739,6 +779,17 @@ def update_lot_sl(session: Session, req: LotSLUpdateRequest) -> dict[str, Any]:
     if lot is None:
         raise HTTPException(status_code=404, detail="lot not found")
 
+    if event_ts is None:
+        latest_for_lot = session.exec(
+            select(Event)
+            .where(Event.lot_id == lot.id)
+            .order_by(Event.ts.desc(), Event.id.desc())
+            .limit(1)
+        ).first()
+        anchor = latest_for_lot.ts if latest_for_lot is not None else lot.opened_at
+        # Ensure SL_UPDATE is not written earlier than BUY/previous lot events.
+        event_ts = max(datetime.utcnow(), anchor + timedelta(microseconds=1))
+
     if req.new_sl is not None:
         lot.sl = req.new_sl
     if req.new_tp is not None:
@@ -762,8 +813,7 @@ def update_lot_sl(session: Session, req: LotSLUpdateRequest) -> dict[str, Any]:
         reason=req.reason,
         note=req.note,
     )
-    if event_ts is not None:
-        event.ts = event_ts
+    event.ts = event_ts
     session.add(event)
     session.flush()
     _sync_lot_snapshots_from_events(session)
@@ -818,8 +868,8 @@ def create_review(session: Session, req: ReviewRequest) -> dict[str, Any]:
 
 def check_duplicate_event(session: Session, req: DuplicateCheckRequest) -> dict[str, Any]:
     event_type = _parse_event_type(req.event_type)
-    ticker = normalize_ticker(req.ticker) if req.ticker else None
     market = _normalize_upper_optional(req.market)
+    ticker = normalize_ticker(req.ticker, market) if req.ticker else None
     currency = _normalize_upper_optional(req.currency)
     ts = _normalize_optional_ts(req.ts)
 
@@ -920,7 +970,8 @@ def update_event(session: Session, event_id: int, req: EventUpdateRequest) -> di
     if "ticker" in changed:
         if req.ticker is None:
             raise HTTPException(status_code=400, detail="ticker cannot be null")
-        event.ticker = normalize_ticker(req.ticker)
+        ticker_market = req.market if "market" in changed else event.market
+        event.ticker = normalize_ticker(req.ticker, ticker_market)
 
     if "ts" in changed:
         event.ts = _normalize_optional_ts(req.ts) or event.ts
@@ -1116,6 +1167,16 @@ def calc_lot_open_risk(lot: Lot, est_exit_fee_rate: float = 0.0) -> float:
         sl=lot.sl,
         qty_open=lot.qty_open,
         fx_rate_to_base=lot.fx_rate_to_base,
+        est_exit_fee_rate=est_exit_fee_rate,
+    )
+
+
+def calc_lot_open_risk_local(lot: Lot, est_exit_fee_rate: float = 0.0) -> float:
+    return _calc_open_risk_from_values(
+        entry_price=lot.entry_price,
+        sl=lot.sl,
+        qty_open=lot.qty_open,
+        fx_rate_to_base=1.0,
         est_exit_fee_rate=est_exit_fee_rate,
     )
 
@@ -1317,7 +1378,16 @@ def build_portfolio(session: Session) -> dict[str, Any]:
                 "price": sell_event.price,
                 "price_display": _format_price_for_display(sell_event.price),
                 "fee": sell_event.fee or 0.0,
+                "fee_local": sell_event.fee or 0.0,
                 "realized_pnl": sell_event.realized_pnl or 0.0,
+                "realized_pnl_local": (
+                    sell_event.realized_pnl_local
+                    if sell_event.realized_pnl_local is not None
+                    else (
+                        (sell_event.realized_pnl or 0.0)
+                        / (sell_event.fx_rate_to_base or 1.0)
+                    )
+                ),
                 "reason": sell_event.reason,
                 "note": sell_event.note,
                 "sell_lot_label": f"sell#{sell_event.id}",
@@ -1343,10 +1413,14 @@ def build_portfolio(session: Session) -> dict[str, Any]:
         ticker_lots = sorted(by_ticker[key], key=lambda x: (x.opened_at, x.id or 0))
         qty_open = sum(lot.qty_open for lot in ticker_lots)
         amount_cost = sum(_to_base(lot.entry_price * lot.qty_open, lot.fx_rate_to_base) for lot in ticker_lots)
+        amount_cost_local = sum(lot.entry_price * lot.qty_open for lot in ticker_lots)
         avg_entry_price = amount_cost / qty_open if qty_open else 0.0
+        avg_entry_price_local = amount_cost_local / qty_open if qty_open else 0.0
 
         open_risk = sum(calc_lot_open_risk(lot, est_exit_fee_rate) for lot in ticker_lots)
+        open_risk_local = sum(calc_lot_open_risk_local(lot, est_exit_fee_rate) for lot in ticker_lots)
         open_risk_pct = (open_risk / amount_cost * 100) if amount_cost else 0.0
+        open_risk_pct_local = (open_risk_local / amount_cost_local * 100) if amount_cost_local else 0.0
         open_risk_total_cost_pct = (open_risk / total_cost_amount * 100) if total_cost_amount else 0.0
 
         sl_tp_pairs = {(lot.sl, lot.tp) for lot in ticker_lots}
@@ -1366,6 +1440,7 @@ def build_portfolio(session: Session) -> dict[str, Any]:
                 "market": lot.market,
                 "exchange": lot.exchange,
                 "currency": lot.currency,
+                "currency_symbol": _currency_symbol(lot.currency),
                 "fx_rate_to_base": lot.fx_rate_to_base,
                 "entry_price": lot.entry_price,
                 "sl": lot.sl,
@@ -1373,9 +1448,11 @@ def build_portfolio(session: Session) -> dict[str, Any]:
                 "sl_display": _format_sl_tp_value(lot.sl),
                 "tp_display": _format_sl_tp_value(lot.tp),
                 "buy_fee": lot.buy_fee,
+                "buy_fee_local": lot.buy_fee,
                 "buy_reason": lot.buy_reason,
                 "note": lot.note,
                 "open_risk": calc_lot_open_risk(lot, est_exit_fee_rate),
+                "open_risk_local": calc_lot_open_risk_local(lot, est_exit_fee_rate),
                 "buy_event_id": (
                     buy_event_by_lot_id.get(lot.id).id
                     if lot.id is not None and buy_event_by_lot_id.get(lot.id) is not None
@@ -1391,13 +1468,18 @@ def build_portfolio(session: Session) -> dict[str, Any]:
                 "market": market,
                 "exchange": exchange,
                 "currency": currency,
+                "currency_symbol": _currency_symbol(currency),
                 "symbol_name": symbol_names.get(ticker, ticker),
                 "qty_open": qty_open,
                 "avg_entry_price": avg_entry_price,
+                "avg_entry_price_local": avg_entry_price_local,
                 "sl_tp": sl_tp,
                 "amount_cost": amount_cost,
+                "amount_cost_local": amount_cost_local,
                 "open_risk": open_risk,
+                "open_risk_local": open_risk_local,
                 "open_risk_pct": open_risk_pct,
+                "open_risk_pct_local": open_risk_pct_local,
                 "open_risk_total_cost_pct": open_risk_total_cost_pct,
                 "lots": lots_out,
                 "sell_events": sells_by_key.get(key, []),
@@ -1436,6 +1518,349 @@ def build_portfolio(session: Session) -> dict[str, Any]:
         "rows": rows,
         "totals": totals,
     }
+
+
+def _fetch_daily_highs_from_yahoo_chart_symbol(
+    symbol: str,
+    start_date: date,
+    end_date: date,
+) -> dict[date, float]:
+    if start_date > end_date:
+        return {}
+    period1 = int(datetime.combine(start_date, time.min).timestamp())
+    period2 = int(datetime.combine(end_date + timedelta(days=1), time.min).timestamp())
+    url = (
+        "https://query1.finance.yahoo.com/v8/finance/chart/"
+        f"{quote(symbol)}?interval=1d&period1={period1}&period2={period2}"
+        "&events=history&includeAdjustedClose=true"
+    )
+    req = Request(
+        url,
+        headers={
+            "User-Agent": "Mozilla/5.0",
+            "Accept": "application/json,text/plain,*/*",
+            "Accept-Language": "en-US,en;q=0.9",
+        },
+    )
+    try:
+        with urlopen(req, timeout=12) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except Exception:
+        return {}
+
+    chart = payload.get("chart") if isinstance(payload, dict) else None
+    results = chart.get("result") if isinstance(chart, dict) else None
+    if not isinstance(results, list) or not results:
+        return {}
+
+    result = results[0] if isinstance(results[0], dict) else {}
+    timestamps = result.get("timestamp") if isinstance(result, dict) else None
+    indicators = result.get("indicators") if isinstance(result, dict) else None
+    quotes = indicators.get("quote") if isinstance(indicators, dict) else None
+    quote0 = quotes[0] if isinstance(quotes, list) and quotes else {}
+    highs = quote0.get("high") if isinstance(quote0, dict) else None
+
+    if not isinstance(timestamps, list) or not isinstance(highs, list):
+        return {}
+
+    output: dict[date, float] = {}
+    for ts_value, high_value in zip(timestamps, highs):
+        try:
+            ts_int = int(ts_value)
+        except (TypeError, ValueError):
+            continue
+        day = datetime.utcfromtimestamp(ts_int).date()
+        if day < start_date or day > end_date:
+            continue
+        parsed_high = _parse_positive_float(high_value)
+        if parsed_high is None:
+            continue
+        previous = output.get(day)
+        output[day] = parsed_high if previous is None else max(previous, parsed_high)
+    return output
+
+
+def _fetch_daily_highs_from_naver_kr(
+    ticker: str,
+    start_date: date,
+    end_date: date,
+) -> dict[date, float]:
+    digits = "".join(ch for ch in (ticker or "") if ch.isdigit()).zfill(6)
+    if len(digits) != 6 or start_date > end_date:
+        return {}
+
+    history_days = max(30, (datetime.utcnow().date() - start_date).days + 40)
+    count = min(6000, history_days)
+    url = f"https://fchart.stock.naver.com/sise.nhn?symbol={digits}&timeframe=day&count={count}&requestType=0"
+    req = Request(
+        url,
+        headers={
+            "User-Agent": "Mozilla/5.0",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
+        },
+    )
+    try:
+        with urlopen(req, timeout=10) as response:
+            raw = response.read()
+    except Exception:
+        return {}
+
+    decoded = None
+    for encoding in ("euc-kr", "cp949", "utf-8"):
+        try:
+            decoded = raw.decode(encoding)
+            break
+        except UnicodeDecodeError:
+            continue
+    if not decoded:
+        return {}
+
+    try:
+        root = ET.fromstring(decoded)
+    except ET.ParseError:
+        return {}
+
+    output: dict[date, float] = {}
+    for item in root.findall(".//item"):
+        packed = item.attrib.get("data", "")
+        if not packed:
+            continue
+        parts = packed.split("|")
+        if len(parts) < 3:
+            continue
+        try:
+            day = datetime.strptime(parts[0], "%Y%m%d").date()
+        except ValueError:
+            continue
+        if day < start_date or day > end_date:
+            continue
+        parsed_high = _parse_positive_float(parts[2])
+        if parsed_high is None:
+            continue
+        previous = output.get(day)
+        output[day] = parsed_high if previous is None else max(previous, parsed_high)
+    return output
+
+
+def _get_daily_highs_for_range(
+    ticker: str | None,
+    market: str | None,
+    start_date: date,
+    end_date: date,
+) -> dict[date, float]:
+    if start_date > end_date:
+        return {}
+    normalized_ticker = (ticker or "").strip().upper()
+    if not normalized_ticker:
+        return {}
+    normalized_market = _normalize_upper_optional(market)
+    now_ts = datetime.utcnow().timestamp()
+
+    if _should_use_naver_kr_source(normalized_ticker, normalized_market):
+        naver_key = (
+            f"NAVER_HIGH:{''.join(ch for ch in normalized_ticker if ch.isdigit()).zfill(6)}:"
+            f"{start_date.isoformat()}:{end_date.isoformat()}"
+        )
+        cached = _daily_high_cache.get(naver_key)
+        if cached and now_ts - float(cached.get("fetched_at", 0.0) or 0.0) < DAILY_HIGH_CACHE_TTL_SECONDS:
+            return dict(cached.get("highs") or {})
+
+        naver_highs = _fetch_daily_highs_from_naver_kr(normalized_ticker, start_date, end_date)
+        _daily_high_cache[naver_key] = {"fetched_at": now_ts, "highs": naver_highs}
+        if naver_highs:
+            return naver_highs
+
+    for symbol in _quote_symbol_candidates(normalized_ticker, normalized_market):
+        cache_key = f"YAHOO_HIGH:{symbol}:{start_date.isoformat()}:{end_date.isoformat()}"
+        cached = _daily_high_cache.get(cache_key)
+        if cached and now_ts - float(cached.get("fetched_at", 0.0) or 0.0) < DAILY_HIGH_CACHE_TTL_SECONDS:
+            highs = dict(cached.get("highs") or {})
+            if highs:
+                return highs
+            continue
+
+        highs = _fetch_daily_highs_from_yahoo_chart_symbol(symbol, start_date, end_date)
+        _daily_high_cache[cache_key] = {"fetched_at": now_ts, "highs": highs}
+        if highs:
+            return highs
+
+    return {}
+
+
+def _max_high_in_range(highs_by_date: dict[date, float], start_date: date, end_date: date) -> float | None:
+    if start_date > end_date:
+        return None
+    best: float | None = None
+    for day, high in highs_by_date.items():
+        if day < start_date or day > end_date:
+            continue
+        if best is None or high > best:
+            best = high
+    return best
+
+
+def _attach_sell_vs_peak_metrics(
+    session: Session,
+    rows: list[dict[str, Any]],
+    sell_alloc_map: dict[int, list[SellAllocation]],
+) -> None:
+    if not rows:
+        return
+
+    sell_row_by_id: dict[int, dict[str, Any]] = {}
+    lot_ids: set[int] = set()
+
+    for row in rows:
+        row.setdefault("sell_vs_peak_status", "")
+        row.setdefault("sell_vs_peak_pct", None)
+        row.setdefault("sell_vs_peak_amount", None)
+        if str(row.get("type") or "").upper() != EventType.SELL.value:
+            continue
+        event_id = row.get("id")
+        if event_id is None:
+            continue
+        try:
+            sell_id = int(event_id)
+        except (TypeError, ValueError):
+            continue
+        sell_row_by_id[sell_id] = row
+        for alloc in sell_alloc_map.get(sell_id, []):
+            lot_ids.add(alloc.lot_id)
+
+    if not sell_row_by_id or not lot_ids:
+        return
+
+    lots = session.exec(select(Lot).where(Lot.id.in_(sorted(lot_ids)))).all()
+    lot_map = {lot.id: lot for lot in lots if lot.id is not None}
+
+    range_bounds: dict[tuple[str, str | None], dict[str, date]] = {}
+    sell_segments: dict[int, list[dict[str, Any]]] = defaultdict(list)
+    sell_flags: dict[int, dict[str, bool]] = {}
+
+    for sell_id, row in sell_row_by_id.items():
+        row["sell_vs_peak_status"] = "na"
+        row["sell_vs_peak_pct"] = None
+        row["sell_vs_peak_amount"] = None
+
+        ts_value = row.get("ts")
+        sell_date: date | None = None
+        if isinstance(ts_value, datetime):
+            sell_date = ts_value.date()
+        elif isinstance(ts_value, date):
+            sell_date = ts_value
+        elif isinstance(ts_value, str):
+            text = ts_value.strip()
+            if text:
+                try:
+                    sell_date = datetime.fromisoformat(text.replace("Z", "+00:00")).date()
+                except ValueError:
+                    try:
+                        sell_date = date.fromisoformat(text[:10])
+                    except ValueError:
+                        sell_date = None
+        if sell_date is None:
+            continue
+
+        try:
+            sell_price = float(row.get("price"))
+        except (TypeError, ValueError):
+            sell_price = 0.0
+        if not math.isfinite(sell_price) or sell_price <= 0:
+            continue
+
+        flags = {"has_alloc": False, "has_daytrade": False}
+        for alloc in sell_alloc_map.get(sell_id, []):
+            flags["has_alloc"] = True
+            lot = lot_map.get(alloc.lot_id)
+            if lot is None:
+                continue
+            buy_date = lot.opened_at.date()
+            if buy_date >= sell_date:
+                flags["has_daytrade"] = True
+                continue
+
+            start_date = buy_date + timedelta(days=1)
+            end_date = sell_date
+            if start_date > end_date:
+                flags["has_daytrade"] = True
+                continue
+
+            qty_sold = float(alloc.qty_sold or 0.0)
+            if qty_sold <= 0:
+                continue
+
+            ticker = (lot.ticker or row.get("ticker") or "").strip().upper()
+            market = _normalize_upper_optional(lot.market if lot.market is not None else row.get("market"))
+            fx_rate = lot.fx_rate_to_base or row.get("fx_rate_to_base") or 1.0
+            if not math.isfinite(float(fx_rate)) or float(fx_rate) <= 0:
+                fx_rate = 1.0
+
+            key = (ticker, market)
+            sell_segments[sell_id].append(
+                {
+                    "key": key,
+                    "start_date": start_date,
+                    "end_date": end_date,
+                    "qty_sold": qty_sold,
+                    "sell_price": sell_price,
+                    "fx_rate_to_base": float(fx_rate),
+                }
+            )
+
+            bounds = range_bounds.setdefault(key, {"start_date": start_date, "end_date": end_date})
+            if start_date < bounds["start_date"]:
+                bounds["start_date"] = start_date
+            if end_date > bounds["end_date"]:
+                bounds["end_date"] = end_date
+
+        sell_flags[sell_id] = flags
+
+    highs_by_key: dict[tuple[str, str | None], dict[date, float]] = {}
+    for key, bounds in range_bounds.items():
+        ticker, market = key
+        highs_by_key[key] = _get_daily_highs_for_range(
+            ticker=ticker,
+            market=market,
+            start_date=bounds["start_date"],
+            end_date=bounds["end_date"],
+        )
+
+    for sell_id, row in sell_row_by_id.items():
+        segments = sell_segments.get(sell_id, [])
+        weighted_pct_sum = 0.0
+        weighted_qty_sum = 0.0
+        missed_amount_base = 0.0
+
+        for segment in segments:
+            highs = highs_by_key.get(segment["key"], {})
+            max_high = _max_high_in_range(
+                highs,
+                segment["start_date"],
+                segment["end_date"],
+            )
+            if max_high is None or max_high <= 0:
+                continue
+
+            sell_price = segment["sell_price"]
+            diff = max(0.0, max_high - sell_price)
+            qty_sold = segment["qty_sold"]
+            pct = (diff / max_high) * 100.0
+            weighted_pct_sum += pct * qty_sold
+            weighted_qty_sum += qty_sold
+            missed_amount_base += diff * qty_sold * segment["fx_rate_to_base"]
+
+        if weighted_qty_sum > 0:
+            row["sell_vs_peak_status"] = "ok"
+            row["sell_vs_peak_pct"] = weighted_pct_sum / weighted_qty_sum
+            row["sell_vs_peak_amount"] = missed_amount_base
+            continue
+
+        flags = sell_flags.get(sell_id, {})
+        if flags.get("has_daytrade") and flags.get("has_alloc"):
+            row["sell_vs_peak_status"] = "daytrade"
+        else:
+            row["sell_vs_peak_status"] = "na"
 
 
 def build_journal(
@@ -1765,6 +2190,7 @@ def build_journal(
     start = (page - 1) * page_size
     end = start + page_size
     rows = rows_filtered[start:end]
+    _attach_sell_vs_peak_metrics(session, rows, sell_alloc_map)
 
     page_window_start = max(1, page - 2)
     page_window_end = min(total_pages, page + 2)
@@ -1846,12 +2272,17 @@ def _quote_symbol_candidates(ticker: str, market: str | None) -> list[str]:
     digits = "".join(ch for ch in normalized_ticker if ch.isdigit())
 
     if normalized_market == "HK":
+        base = normalized_ticker[:-3] if normalized_ticker.endswith(".HK") else normalized_ticker
+        hk_digits = "".join(ch for ch in base if ch.isdigit())
+        if hk_digits:
+            canonical = hk_digits.zfill(5) if len(hk_digits) <= 5 else hk_digits
+            yahoo_style = canonical[1:] if len(canonical) == 5 and canonical.startswith("0") else canonical
+            candidates.append(f"{yahoo_style}.HK")
+            candidates.append(f"{canonical}.HK")
+            candidates.append(f"{hk_digits}.HK")
         if normalized_ticker.endswith(".HK"):
             candidates.append(normalized_ticker)
-        if digits:
-            candidates.append(f"{digits.zfill(4)}.HK")
-            candidates.append(f"{digits}.HK")
-        if "." not in normalized_ticker and not normalized_ticker.endswith(".HK"):
+        elif "." not in normalized_ticker:
             candidates.append(f"{normalized_ticker}.HK")
     elif normalized_market == "KR":
         if normalized_ticker.endswith(".KS") or normalized_ticker.endswith(".KQ"):
@@ -2047,14 +2478,17 @@ def _is_symbol_like_name(name: str | None, ticker: str | None, market: str | Non
     nu = n.upper()
     if nu == t:
         return True
-    digits = "".join(ch for ch in t if ch.isdigit()).zfill(6)
-    symbol_candidates = {
-        t,
-        f"{digits}.KS",
-        f"{digits}.KQ",
-        f"{digits.zfill(4)}.HK",
-        f"{digits}.HK",
-    }
+    digits = "".join(ch for ch in t if ch.isdigit())
+    symbol_candidates = {t}
+    for symbol in _quote_symbol_candidates(t, market):
+        symbol_candidates.add(symbol.strip().upper())
+    if digits:
+        symbol_candidates.add(digits)
+        if len(digits) <= 5:
+            canonical_hk = digits.zfill(5)
+            symbol_candidates.add(canonical_hk)
+            if canonical_hk.startswith("0"):
+                symbol_candidates.add(canonical_hk[1:])
     if nu in symbol_candidates:
         return True
     if _normalize_upper_optional(market) == "KR" and ("NPAY 증권" in nu or "네이버페이 증권" in n):
@@ -2654,6 +3088,8 @@ def _build_closed_trade_rows(session: Session, closed_sell_events: list[Event]) 
         event_allocs = allocs_by_event.get(event.id, [])
         qty_sold = 0.0
         cost_basis_base = 0.0
+        hold_days_weighted_sum = 0.0
+        hold_days_weighted_qty = 0.0
         for alloc in event_allocs:
             lot = lot_map.get(alloc.lot_id)
             if lot is None:
@@ -2664,8 +3100,23 @@ def _build_closed_trade_rows(session: Session, closed_sell_events: list[Event]) 
             qty_sold += qty
             lot_fx = lot.fx_rate_to_base if (lot.fx_rate_to_base and lot.fx_rate_to_base > 0) else (event.fx_rate_to_base or 1.0)
             cost_basis_base += _to_base((lot.entry_price or 0.0) * qty, lot_fx)
+            try:
+                held_days = (event.ts - lot.opened_at).total_seconds() / 86400.0
+            except Exception:
+                held_days = 0.0
+            if not math.isfinite(held_days):
+                held_days = 0.0
+            if held_days < 0:
+                held_days = 0.0
+            hold_days_weighted_sum += held_days * qty
+            hold_days_weighted_qty += qty
 
         return_pct = (realized_value / cost_basis_base * 100.0) if cost_basis_base > 1e-12 else None
+        hold_days = (
+            hold_days_weighted_sum / hold_days_weighted_qty
+            if hold_days_weighted_qty > 1e-12
+            else None
+        )
         rows.append(
             {
                 "event_id": event.id,
@@ -2677,10 +3128,332 @@ def _build_closed_trade_rows(session: Session, closed_sell_events: list[Event]) 
                 "cost_basis_base": cost_basis_base,
                 "realized_pnl": realized_value,
                 "return_pct": return_pct,
+                "hold_days": hold_days,
             }
         )
 
     return rows
+
+
+def _build_monthly_check_rows(closed_trade_rows: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    if not closed_trade_rows:
+        return [], {
+            "trade_count": 0,
+            "avg_profit_pct": None,
+            "avg_loss_pct": None,
+            "win_rate_pct": None,
+            "success_failure_ratio": None,
+            "adjusted_success_failure_ratio": None,
+            "max_profit_pct": None,
+            "max_loss_pct": None,
+            "avg_win_hold_days": None,
+            "avg_loss_hold_days": None,
+        }
+
+    parsed: list[dict[str, Any]] = []
+    for row in closed_trade_rows:
+        try:
+            ts = datetime.fromisoformat(str(row.get("ts") or ""))
+        except Exception:
+            continue
+        return_pct = row.get("return_pct")
+        try:
+            return_value = float(return_pct) if return_pct is not None else None
+        except (TypeError, ValueError):
+            return_value = None
+        if return_value is not None and not math.isfinite(return_value):
+            return_value = None
+        hold_days_raw = row.get("hold_days")
+        try:
+            hold_days = float(hold_days_raw) if hold_days_raw is not None else None
+        except (TypeError, ValueError):
+            hold_days = None
+        if hold_days is not None and not math.isfinite(hold_days):
+            hold_days = None
+        parsed.append(
+            {
+                "ts": ts,
+                "return_pct": return_value,
+                "hold_days": hold_days,
+            }
+        )
+
+    if not parsed:
+        return [], {
+            "trade_count": 0,
+            "avg_profit_pct": None,
+            "avg_loss_pct": None,
+            "win_rate_pct": None,
+            "success_failure_ratio": None,
+            "adjusted_success_failure_ratio": None,
+            "max_profit_pct": None,
+            "max_loss_pct": None,
+            "avg_win_hold_days": None,
+            "avg_loss_hold_days": None,
+        }
+
+    parsed.sort(key=lambda x: x["ts"])
+
+    def _month_start(d: date) -> date:
+        return date(d.year, d.month, 1)
+
+    def _next_month(d: date) -> date:
+        if d.month == 12:
+            return date(d.year + 1, 1, 1)
+        return date(d.year, d.month + 1, 1)
+
+    start_month = _month_start(parsed[0]["ts"].date())
+    end_month = _month_start(parsed[-1]["ts"].date())
+
+    month_rows: list[date] = []
+    cursor = start_month
+    while cursor <= end_month:
+        month_rows.append(cursor)
+        cursor = _next_month(cursor)
+
+    grouped: dict[str, dict[str, Any]] = {}
+    for month_start in month_rows:
+        key = month_start.isoformat()
+        grouped[key] = {
+            "period_key": month_start.strftime("%Y-%m"),
+            "period_start": key,
+            "trade_count": 0,
+            "wins": [],
+            "losses": [],
+            "win_holds": [],
+            "loss_holds": [],
+        }
+
+    for row in parsed:
+        m = _month_start(row["ts"].date())
+        key = m.isoformat()
+        bucket = grouped.get(key)
+        if bucket is None:
+            continue
+        bucket["trade_count"] += 1
+        value = row["return_pct"]
+        hold_days = row["hold_days"]
+        if value is None:
+            continue
+        if value > 1e-12:
+            bucket["wins"].append(value)
+            if hold_days is not None:
+                bucket["win_holds"].append(hold_days)
+        elif value < -1e-12:
+            bucket["losses"].append(abs(value))
+            if hold_days is not None:
+                bucket["loss_holds"].append(hold_days)
+
+    def _safe_mean(values: list[float]) -> float | None:
+        if not values:
+            return None
+        return sum(values) / len(values)
+
+    output_rows: list[dict[str, Any]] = []
+    all_wins: list[float] = []
+    all_losses: list[float] = []
+    all_win_holds: list[float] = []
+    all_loss_holds: list[float] = []
+    total_trade_count = 0
+    total_win_count = 0
+
+    for month_start in month_rows:
+        key = month_start.isoformat()
+        bucket = grouped[key]
+        trade_count = int(bucket["trade_count"])
+        wins = [float(x) for x in bucket["wins"]]
+        losses = [float(x) for x in bucket["losses"]]
+        win_holds = [float(x) for x in bucket["win_holds"]]
+        loss_holds = [float(x) for x in bucket["loss_holds"]]
+        win_count = len(wins)
+        win_rate_pct = (win_count / trade_count * 100.0) if trade_count > 0 else None
+        avg_profit_pct = _safe_mean(wins)
+        avg_loss_pct = _safe_mean(losses)
+        success_failure_ratio = (
+            (avg_profit_pct / avg_loss_pct)
+            if avg_profit_pct is not None and avg_loss_pct is not None and avg_loss_pct > 1e-12
+            else None
+        )
+        adjusted_success_failure_ratio = None
+        if (
+            win_rate_pct is not None
+            and avg_profit_pct is not None
+            and avg_loss_pct is not None
+            and avg_loss_pct > 1e-12
+            and win_rate_pct < 100.0
+        ):
+            p_win = max(0.0, min(1.0, win_rate_pct / 100.0))
+            p_loss = 1.0 - p_win
+            if p_loss > 1e-12:
+                adjusted_success_failure_ratio = (p_win * avg_profit_pct) / (p_loss * avg_loss_pct)
+
+        max_profit_pct = max(wins) if wins else None
+        max_loss_pct = max(losses) if losses else None
+        avg_win_hold_days = _safe_mean(win_holds)
+        avg_loss_hold_days = _safe_mean(loss_holds)
+
+        output_rows.append(
+            {
+                "period_key": bucket["period_key"],
+                "month_label": month_start.strftime("%Y-%m"),
+                "trade_count": trade_count,
+                "avg_profit_pct": avg_profit_pct,
+                "avg_loss_pct": avg_loss_pct,
+                "win_rate_pct": win_rate_pct,
+                "success_failure_ratio": success_failure_ratio,
+                "adjusted_success_failure_ratio": adjusted_success_failure_ratio,
+                "max_profit_pct": max_profit_pct,
+                "max_loss_pct": max_loss_pct,
+                "avg_win_hold_days": avg_win_hold_days,
+                "avg_loss_hold_days": avg_loss_hold_days,
+            }
+        )
+
+        total_trade_count += trade_count
+        total_win_count += win_count
+        all_wins.extend(wins)
+        all_losses.extend(losses)
+        all_win_holds.extend(win_holds)
+        all_loss_holds.extend(loss_holds)
+
+    avg_profit_all = _safe_mean(all_wins)
+    avg_loss_all = _safe_mean(all_losses)
+    win_rate_all = (total_win_count / total_trade_count * 100.0) if total_trade_count > 0 else None
+    success_failure_all = (
+        (avg_profit_all / avg_loss_all)
+        if avg_profit_all is not None and avg_loss_all is not None and avg_loss_all > 1e-12
+        else None
+    )
+    adjusted_success_failure_all = None
+    if (
+        win_rate_all is not None
+        and avg_profit_all is not None
+        and avg_loss_all is not None
+        and avg_loss_all > 1e-12
+        and win_rate_all < 100.0
+    ):
+        p_win_all = max(0.0, min(1.0, win_rate_all / 100.0))
+        p_loss_all = 1.0 - p_win_all
+        if p_loss_all > 1e-12:
+            adjusted_success_failure_all = (p_win_all * avg_profit_all) / (p_loss_all * avg_loss_all)
+
+    summary = {
+        "trade_count": total_trade_count,
+        "avg_profit_pct": avg_profit_all,
+        "avg_loss_pct": avg_loss_all,
+        "win_rate_pct": win_rate_all,
+        "success_failure_ratio": success_failure_all,
+        "adjusted_success_failure_ratio": adjusted_success_failure_all,
+        "max_profit_pct": max(all_wins) if all_wins else None,
+        "max_loss_pct": max(all_losses) if all_losses else None,
+        "avg_win_hold_days": _safe_mean(all_win_holds),
+        "avg_loss_hold_days": _safe_mean(all_loss_holds),
+    }
+    return output_rows, summary
+
+
+def _month_start(d: date) -> date:
+    return date(d.year, d.month, 1)
+
+
+def _next_month(d: date) -> date:
+    if d.month == 12:
+        return date(d.year + 1, 1, 1)
+    return date(d.year, d.month + 1, 1)
+
+
+def _parse_year_month(value: str | None) -> date | None:
+    if not value:
+        return None
+    text = value.strip()
+    if len(text) < 7:
+        return None
+    try:
+        dt = datetime.strptime(text[:7], "%Y-%m")
+    except ValueError:
+        return None
+    return date(dt.year, dt.month, 1)
+
+
+def _empty_monthly_check_row(month_label: str) -> dict[str, Any]:
+    return {
+        "period_key": month_label,
+        "month_label": month_label,
+        "trade_count": 0,
+        "avg_profit_pct": None,
+        "avg_loss_pct": None,
+        "win_rate_pct": None,
+        "success_failure_ratio": None,
+        "adjusted_success_failure_ratio": None,
+        "max_profit_pct": None,
+        "max_loss_pct": None,
+        "avg_win_hold_days": None,
+        "avg_loss_hold_days": None,
+    }
+
+
+def build_monthly_check_page(session: Session) -> dict[str, Any]:
+    stats = build_stats(session)
+    raw_rows = stats.get("monthly_check_rows") or []
+    summary = stats.get("monthly_check_summary") or {}
+
+    row_map: dict[str, dict[str, Any]] = {}
+    for raw in raw_rows:
+        month_label_raw = raw.get("month_label") or raw.get("period_key")
+        month_date = _parse_year_month(str(month_label_raw) if month_label_raw is not None else None)
+        if month_date is None:
+            continue
+        month_label = month_date.strftime("%Y-%m")
+        merged = _empty_monthly_check_row(month_label)
+        merged.update(raw)
+        merged["month_label"] = month_label
+        merged["period_key"] = month_label
+        row_map[month_label] = merged
+
+    latest_event_ts = session.exec(select(Event.ts).order_by(Event.ts.desc())).first()
+    if isinstance(latest_event_ts, datetime):
+        end_month = _month_start(latest_event_ts.date())
+    elif row_map:
+        end_month = max(_parse_year_month(key) for key in row_map if _parse_year_month(key) is not None)
+        end_month = end_month if isinstance(end_month, date) else MONTHLY_CHECK_START_MONTH
+    else:
+        end_month = _month_start(date.today())
+
+    start_month = MONTHLY_CHECK_START_MONTH
+    if end_month < start_month:
+        end_month = start_month
+
+    rows: list[dict[str, Any]] = []
+    month_options: list[str] = []
+    cursor = start_month
+    while cursor <= end_month:
+        label = cursor.strftime("%Y-%m")
+        month_options.append(label)
+        rows.append(row_map.get(label, _empty_monthly_check_row(label)))
+        cursor = _next_month(cursor)
+
+    transposed_rows: list[dict[str, Any]] = []
+    for metric in MONTHLY_CHECK_METRICS:
+        key = metric["key"]
+        transposed_rows.append(
+            {
+                "key": key,
+                "label": metric["label"],
+                "format": metric["format"],
+                "values": [row.get(key) for row in rows],
+            }
+        )
+
+    return {
+        "rows": rows,
+        "summary": summary,
+        "month_options": month_options,
+        "month_options_desc": list(reversed(month_options)),
+        "start_month": start_month.strftime("%Y-%m"),
+        "end_month": end_month.strftime("%Y-%m"),
+        "metrics": MONTHLY_CHECK_METRICS,
+        "transposed_rows": transposed_rows,
+    }
 
 
 def build_stats(session: Session) -> dict[str, Any]:
@@ -2719,6 +3492,7 @@ def build_stats(session: Session) -> dict[str, Any]:
         for row in closed_trade_rows
         if row["return_pct"] is not None and math.isfinite(float(row["return_pct"]))
     ]
+    monthly_check_rows, monthly_check_summary = _build_monthly_check_rows(closed_trade_rows)
     used_currencies = {base_currency}
     for value in session.exec(select(Event.currency)).all():
         normalized = _normalize_upper_optional(value)
@@ -2744,6 +3518,8 @@ def build_stats(session: Session) -> dict[str, Any]:
         "benchmark_symbols": list(BENCHMARK_SYMBOLS),
         "closed_trade_pnls": closed_trade_pnls,
         "closed_trade_returns": closed_trade_returns,
+        "monthly_check_rows": monthly_check_rows,
+        "monthly_check_summary": monthly_check_summary,
         "definitions": {
             "trade_count": "BUY + SELL event count",
             "win_rate_pct": "Winning SELL ratio excluding breakeven (BE) sells",
@@ -2753,6 +3529,11 @@ def build_stats(session: Session) -> dict[str, Any]:
             "return_method2_pct": f"((asset_end - asset_start + withdraw_sum - deposit_sum) / (asset_start + weighted_deposit_sum - weighted_withdraw_sum)) * 100; hidden when denominator <= {RETURN_DENOMINATOR_MIN_BASE:.0f} {base_currency}",
             "realized_return_pct": "Period realized return on closed trades: realized_pnl / realized_cost_basis * 100",
             "closed_trade_return_pct": "Per closed SELL: realized_pnl / allocated cost basis * 100",
+            "monthly_avg_profit_pct": "Average return(%) across winning closed trades for each month",
+            "monthly_avg_loss_pct": "Average loss magnitude(%) across losing closed trades for each month",
+            "monthly_success_failure_ratio": "Average profit(%) / average loss(%)",
+            "monthly_adjusted_success_failure_ratio": "((win_rate * avg_profit) / (loss_rate * avg_loss))",
+            "monthly_hold_days": "Weighted holding days from BUY(opened_at) to SELL(ts) by sold quantity",
         },
         "current": {
             "daily": daily[0] if daily else None,

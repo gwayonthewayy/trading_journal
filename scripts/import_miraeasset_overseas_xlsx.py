@@ -5,6 +5,7 @@ import argparse
 import sys
 from collections import defaultdict
 from dataclasses import dataclass
+from datetime import time
 from pathlib import Path
 from typing import Any
 
@@ -274,7 +275,15 @@ def main() -> None:
     plans_by_market: dict[tuple[str, str], Any] = {}
     for market_key in sorted(grouped_rows.keys()):
         market, currency = market_key
-        plan = build_import_plan(grouped_rows[market_key])
+        if market == "US":
+            # If source has no time, default to 23:30 for US imports.
+            plan = build_import_plan(
+                grouped_rows[market_key],
+                default_trade_time=time(23, 30, 0),
+                keep_source_time_if_present=True,
+            )
+        else:
+            plan = build_import_plan(grouped_rows[market_key])
         plans_by_market[market_key] = plan
 
         print(

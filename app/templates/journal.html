@@ -292,7 +292,7 @@
           <select id="quick-attach-event-select">
             <option value="">Select event...</option>
             {% for e in data.events %}
-            <option value="{{ e.id }}">#{{ e.id }} | {{ e.type }} | {{ e.ticker or "-" }} | {{ e.ts }}</option>
+            <option value="{{ e.id }}">#{{ e.id }} | {{ e.type }} | {{ e.ticker or "-" }} | {{ e.ts.strftime("%Y-%m-%d %H:%M:%S") if e.ts else "" }}</option>
             {% endfor %}
           </select>
         </label>
@@ -343,6 +343,12 @@
               <button type="button" class="th-filter-btn" aria-label="Filter Ticker" title="Filter Ticker">▾</button>
             </span>
           </th>
+          <th class="th-filterable col-name" data-table-filter-key="symbol_name" data-table-filter-label="Name">
+            <span class="th-filter-head">
+              <span class="th-filter-title">Name</span>
+              <button type="button" class="th-filter-btn" aria-label="Filter Name" title="Filter Name">▾</button>
+            </span>
+          </th>
           <th class="th-filterable col-market" data-table-filter-key="market" data-table-filter-label="Market">
             <span class="th-filter-head">
               <span class="th-filter-title">Market</span>
@@ -353,12 +359,6 @@
             <span class="th-filter-head">
               <span class="th-filter-title">Currency</span>
               <button type="button" class="th-filter-btn" aria-label="Filter Currency" title="Filter Currency">▾</button>
-            </span>
-          </th>
-          <th class="th-filterable" data-table-filter-key="symbol_name" data-table-filter-label="Name">
-            <span class="th-filter-head">
-              <span class="th-filter-title">Name</span>
-              <button type="button" class="th-filter-btn" aria-label="Filter Name" title="Filter Name">▾</button>
             </span>
           </th>
           <th class="th-filterable" data-table-filter-key="type" data-table-filter-label="Type">
@@ -380,6 +380,7 @@
           <th>Unrealized PnL</th>
           <th>Realized PnL</th>
           <th>Realized PnL (Local)</th>
+          <th class="col-missed-high">Missed High</th>
           <th>Open Risk</th>
           <th class="col-reason-note">Reason / Note</th>
           <th class="col-trade-group">Trade Group</th>
@@ -415,11 +416,11 @@
           data-event-review="{{ e.review or '' }}"
           data-event-trade-group-id="{{ e.trade_group_id if e.trade_group_id is not none else '' }}"
         >
-          <td class="inline-editable col-ts" data-inline-field="ts">{{ e.ts }}</td>
+          <td class="inline-editable col-ts" data-inline-field="ts">{{ e.ts.strftime("%Y-%m-%d %H:%M:%S") if e.ts else "" }}</td>
           <td class="col-ticker{% if e.type in ['BUY', 'SELL'] %} inline-editable{% endif %}" {% if e.type in ["BUY", "SELL"] %}data-inline-field="ticker"{% endif %}>{{ e.ticker or "" }}</td>
+          <td class="col-name">{{ e.symbol_name or "" }}</td>
           <td class="inline-editable col-market" data-inline-field="market">{{ e.market or "" }}</td>
           <td class="inline-editable col-currency" data-inline-field="currency">{{ e.currency or "" }}</td>
-          <td>{{ e.symbol_name or "" }}</td>
           <td>
             {% set type_class = e.type|lower|replace("_", "-") %}
             <span class="badge badge-{{ type_class }}">{{ e.type }}</span>
@@ -442,6 +443,20 @@
           <td>{{ data.base_currency_symbol }}{{ "{:,.2f}".format(e.unrealized_pnl) if e.unrealized_pnl is not none else "" }}</td>
           <td>{{ data.base_currency_symbol }}{{ "{:,.2f}".format(e.realized_pnl) if e.realized_pnl is not none else "" }}</td>
           <td>{{ data.krw_currency_symbol }}{{ "{:,.0f}".format(e.realized_pnl_local) if e.realized_pnl_local is not none else "" }}</td>
+          <td class="col-missed-high">
+            {% if e.sell_vs_peak_status == "daytrade" %}
+              <span class="chip-neutral" title="당일 매매는 계산에서 제외">⏱</span>
+            {% elif e.sell_vs_peak_pct is not none %}
+              {% if e.sell_vs_peak_pct > 1e-12 %}
+                <div class="chip-bad">{{ "{:,.2f}%".format(e.sell_vs_peak_pct) }}</div>
+              {% else %}
+                <div class="chip-neutral">{{ "{:,.2f}%".format(e.sell_vs_peak_pct) }}</div>
+              {% endif %}
+              <div class="small">{{ data.base_currency_symbol }}{{ "{:,.2f}".format(e.sell_vs_peak_amount or 0.0) }}</div>
+            {% else %}
+              <span class="small">-</span>
+            {% endif %}
+          </td>
           <td>
             <div>{{ data.base_currency_symbol }}{{ "{:,.2f}".format(e.open_risk) }}</div>
             {% set delta = e.open_risk_delta if e.open_risk_delta is not none else 0 %}
@@ -515,15 +530,28 @@
     <article class="journal-mobile-card" data-event-id="{{ e.id }}">
       <div class="journal-mobile-card-head">
         <strong>#{{ e.id }} {{ e.type }}</strong>
-        <span class="small">{{ e.ts }}</span>
+        <span class="small">{{ e.ts.strftime("%Y-%m-%d %H:%M:%S") if e.ts else "" }}</span>
       </div>
       <div class="journal-mobile-card-grid">
         <div><span class="small">Ticker</span><div>{{ e.ticker or "-" }}</div></div>
+        <div><span class="small">Name</span><div>{{ e.symbol_name or "" }}</div></div>
         <div><span class="small">Market</span><div>{{ e.market or "" }}</div></div>
         <div><span class="small">Currency</span><div>{{ e.currency or "" }}</div></div>
         <div><span class="small">Qty/Price</span><div>{{ "{:,.4f}".format(e.qty) if e.qty is not none else "" }} / {{ e.currency_symbol }}{{ e.price_display if e.price is not none else "" }}</div></div>
         <div><span class="small">Unrealized PnL</span><div>{{ data.base_currency_symbol }}{{ "{:,.2f}".format(e.unrealized_pnl) if e.unrealized_pnl is not none else "" }}</div></div>
         <div><span class="small">Realized PnL</span><div>{{ data.base_currency_symbol }}{{ "{:,.2f}".format(e.realized_pnl) if e.realized_pnl is not none else "" }}</div></div>
+        <div>
+          <span class="small">Missed High</span>
+          <div>
+            {% if e.sell_vs_peak_status == "daytrade" %}
+              ⏱
+            {% elif e.sell_vs_peak_pct is not none %}
+              {{ "{:,.2f}%".format(e.sell_vs_peak_pct) }} ({{ data.base_currency_symbol }}{{ "{:,.2f}".format(e.sell_vs_peak_amount or 0.0) }})
+            {% else %}
+              -
+            {% endif %}
+          </div>
+        </div>
         <div><span class="small">Reason</span><div>{{ e.reason or "" }}</div></div>
       </div>
       {% set mobile_image_urls = e.image_urls if e.image_urls is defined else ((e.image_url or '').splitlines()) %}
@@ -606,15 +634,15 @@
     return jsonRequest(url, "POST", payload);
   }
 
-  const JOURNAL_COLUMN_PREF_KEY = "tj_journal_columns_v1";
+  const JOURNAL_COLUMN_PREF_KEY = "tj_journal_columns_v3";
   const JOURNAL_FILTER_PRESET_KEY = "tj_journal_filter_preset_v1";
   const JOURNAL_LAST_ACTION_KEY = "tj_journal_last_action_v1";
   const JOURNAL_COLUMNS = [
     { index: 1, label: "TS" },
     { index: 2, label: "Ticker" },
-    { index: 3, label: "Market" },
-    { index: 4, label: "Currency" },
-    { index: 5, label: "Name" },
+    { index: 3, label: "Name" },
+    { index: 4, label: "Market" },
+    { index: 5, label: "Currency" },
     { index: 6, label: "Type" },
     { index: 7, label: "W/L" },
     { index: 8, label: "Qty" },
@@ -624,12 +652,13 @@
     { index: 12, label: "Unrealized PnL" },
     { index: 13, label: "Realized PnL" },
     { index: 14, label: "Realized PnL (Local)" },
-    { index: 15, label: "Open Risk" },
-    { index: 16, label: "Reason / Note" },
-    { index: 17, label: "Trade Group" },
-    { index: 18, label: "Review" },
-    { index: 19, label: "Image" },
-    { index: 20, label: "Actions" },
+    { index: 15, label: "Missed High" },
+    { index: 16, label: "Open Risk" },
+    { index: 17, label: "Reason / Note" },
+    { index: 18, label: "Trade Group" },
+    { index: 19, label: "Review" },
+    { index: 20, label: "Image" },
+    { index: 21, label: "Actions" },
   ];
   let journalColumnPrefs = {};
   const journalColumnPopup = document.createElement("div");
@@ -941,10 +970,24 @@
     const lotTemplate = document.getElementById("lot-options-template");
     const allocationsBox = document.getElementById("allocations");
     const sellTickerInput = document.getElementById("sell-ticker");
+    const sellForm = document.getElementById("sell-form");
+    const sellMarketSelect = sellForm ? sellForm.querySelector('select[name="market"]') : null;
 
-    function fillLotOptions(selectElem, ticker) {
+    function normalizeTickerByMarket(ticker, market) {
+      const raw = String(ticker || "").trim().toUpperCase();
+      const mkt = String(market || "").trim().toUpperCase();
+      if (!raw) return "";
+      if (mkt !== "HK") return raw;
+      const withoutSuffix = raw.endsWith(".HK") ? raw.slice(0, -3) : raw;
+      const digits = withoutSuffix.replace(/\D+/g, "");
+      if (!digits) return raw;
+      if (digits.length <= 5) return digits.padStart(5, "0");
+      return digits;
+    }
+
+    function fillLotOptions(selectElem, ticker, market) {
       selectElem.innerHTML = '<option value="">Select Lot</option>';
-      const normalizedTicker = (ticker || "").trim().toUpperCase();
+      const normalizedTicker = normalizeTickerByMarket(ticker, market);
 
       for (const opt of lotTemplate.options) {
         if (!opt.value) continue;
@@ -956,14 +999,14 @@
       }
     }
 
-    function addAllocationRow(ticker) {
+    function addAllocationRow(ticker, market) {
       const row = document.createElement("div");
       row.className = "form-row allocation-row";
 
       const lotSelect = document.createElement("select");
       lotSelect.className = "alloc-lot";
       lotSelect.required = true;
-      fillLotOptions(lotSelect, ticker);
+      fillLotOptions(lotSelect, ticker, market);
 
       const qtyInput = document.createElement("input");
       qtyInput.className = "alloc-qty";
@@ -986,10 +1029,11 @@
 
     function refreshAllocationOptions() {
       const ticker = sellTickerInput.value;
+      const market = sellMarketSelect ? sellMarketSelect.value : "";
       const selects = allocationsBox.querySelectorAll(".alloc-lot");
       selects.forEach((select) => {
         const currentValue = select.value;
-        fillLotOptions(select, ticker);
+        fillLotOptions(select, ticker, market);
         if (currentValue && Array.from(select.options).some((o) => o.value === currentValue)) {
           select.value = currentValue;
         }
@@ -997,12 +1041,16 @@
     }
 
     document.getElementById("add-allocation").addEventListener("click", () => {
-      addAllocationRow(sellTickerInput.value);
+      const market = sellMarketSelect ? sellMarketSelect.value : "";
+      addAllocationRow(sellTickerInput.value, market);
     });
 
     sellTickerInput.addEventListener("input", refreshAllocationOptions);
+    if (sellMarketSelect) {
+      sellMarketSelect.addEventListener("change", refreshAllocationOptions);
+    }
 
-    addAllocationRow("");
+    addAllocationRow("", "");
 
     document.getElementById("buy-form").addEventListener("submit", async (e) => {
       e.preventDefault();
@@ -1011,7 +1059,9 @@
       try {
         const form = e.target;
         const payload = parsePayload(form, ["qty", "price", "fee", "sl", "tp", "trade_group_id", "fx_rate_to_base"]);
-        if (payload.ticker) payload.ticker = String(payload.ticker).trim().toUpperCase();
+        if (payload.ticker) {
+          payload.ticker = normalizeTickerByMarket(payload.ticker, payload.market);
+        }
         const ok = await checkDuplicateWithPrompt("BUY", payload);
         if (!ok) return;
         const result = await postJson("/api/buy", payload);
@@ -1052,8 +1102,9 @@
 
       try {
         const form = e.target;
+        const market = form.market.value || "";
         const payload = {
-          ticker: form.ticker.value.trim().toUpperCase(),
+          ticker: normalizeTickerByMarket(form.ticker.value, market),
           price: Number(form.price.value),
           fee: form.fee.value === "" ? 0 : Number(form.fee.value),
           allocations: [],
@@ -1066,7 +1117,7 @@
         if (form.reason.value) payload.reason = form.reason.value;
         if (form.note.value) payload.note = form.note.value;
         if (form.ts.value) payload.ts = form.ts.value;
-        if (form.market.value) payload.market = form.market.value;
+        if (market) payload.market = market;
         if (form.currency.value) payload.currency = form.currency.value;
         if (form.fx_rate_to_base.value) payload.fx_rate_to_base = Number(form.fx_rate_to_base.value);
         if (form.trade_group_id.value) payload.trade_group_id = Number(form.trade_group_id.value);
@@ -1365,7 +1416,10 @@
 
   function formatTs(ts) {
     if (!ts) return "";
-    return String(ts).replace("T", " ");
+    let text = String(ts).trim().replace("T", " ");
+    text = text.replace(/Z$/, "");
+    text = text.replace(/(\d{2}:\d{2}:\d{2})\.\d+/, "$1");
+    return text;
   }
 
   function currencySymbolForCode(code) {
@@ -1435,6 +1489,33 @@
     if (!Number.isFinite(n)) return "+0.00";
     const absText = formatMaybeNumber(Math.abs(n), 2);
     return `${n >= 0 ? "+" : "-"}${absText}`;
+  }
+
+  function buildMissedHighCellHtml(e) {
+    const status = String(e?.sell_vs_peak_status || "").toLowerCase();
+    if (status === "daytrade") {
+      return '<span class="chip-neutral" title="Same-day trade excluded">⏱</span>';
+    }
+    const pct = Number(e?.sell_vs_peak_pct);
+    if (!Number.isFinite(pct)) {
+      return '<span class="small">-</span>';
+    }
+    const chipClass = pct > 1e-12 ? "chip-bad" : "chip-neutral";
+    const pctText = `${formatMaybeNumber(pct, 2)}%`;
+    const amountText = formatMoney(e?.sell_vs_peak_amount, baseCurrencySymbol, 2);
+    return `<div class="${chipClass}">${escapeHtml(pctText)}</div>${
+      amountText ? `<div class="small">${escapeHtml(amountText)}</div>` : ""
+    }`;
+  }
+
+  function formatMissedHighCardText(e) {
+    const status = String(e?.sell_vs_peak_status || "").toLowerCase();
+    if (status === "daytrade") return "⏱";
+    const pct = Number(e?.sell_vs_peak_pct);
+    if (!Number.isFinite(pct)) return "-";
+    const pctText = `${formatMaybeNumber(pct, 2)}%`;
+    const amountText = formatMoney(e?.sell_vs_peak_amount, baseCurrencySymbol, 2);
+    return amountText ? `${pctText} (${amountText})` : pctText;
   }
 
   function typeClass(type) {
@@ -1535,9 +1616,9 @@
       >
         <td class="inline-editable col-ts" data-inline-field="ts">${escapeHtml(formatTs(e.ts))}</td>
         <td class="col-ticker${(e.type === "BUY" || e.type === "SELL") ? " inline-editable" : ""}" ${(e.type === "BUY" || e.type === "SELL") ? 'data-inline-field="ticker"' : ""}>${escapeHtml(e.ticker || "")}</td>
+        <td class="col-name">${escapeHtml(e.symbol_name || "")}</td>
         <td class="inline-editable col-market" data-inline-field="market">${escapeHtml(e.market || "")}</td>
         <td class="inline-editable col-currency" data-inline-field="currency">${escapeHtml(e.currency || "")}</td>
-        <td>${escapeHtml(e.symbol_name || "")}</td>
         <td><span class="badge badge-${escapeHtml(typeClass(e.type))}">${escapeHtml(e.type || "")}</span></td>
         <td>${e.win_lose === "W" ? '<span class="wl-win">W</span>' : e.win_lose === "L" ? '<span class="wl-lose">L</span>' : ""}</td>
         <td${e.type === "BUY" ? ' class="inline-editable" data-inline-field="qty"' : ""}>${escapeHtml(formatQty(e.qty))}</td>
@@ -1551,6 +1632,7 @@
         <td>${escapeHtml(formatMoney(e.unrealized_pnl, baseCurrencySymbol, 2))}</td>
         <td>${escapeHtml(formatMoney(e.realized_pnl, baseCurrencySymbol, 2))}</td>
         <td>${escapeHtml(formatMoney(e.realized_pnl_local, krwCurrencySymbol, 0))}</td>
+        <td class="col-missed-high">${buildMissedHighCellHtml(e)}</td>
         <td>
           <div>${escapeHtml(formatMoney(e.open_risk, baseCurrencySymbol, 2))}</div>
           <div class="${deltaClass}">${escapeHtml(baseCurrencySymbol)} ${escapeHtml(formatSigned(e.open_risk_delta))}</div>
@@ -1591,11 +1673,13 @@
         </div>
         <div class="journal-mobile-card-grid">
           <div><span class="small">Ticker</span><div>${escapeHtml(e.ticker || "-")}</div></div>
+          <div><span class="small">Name</span><div>${escapeHtml(e.symbol_name || "")}</div></div>
           <div><span class="small">Market</span><div>${escapeHtml(e.market || "")}</div></div>
           <div><span class="small">Currency</span><div>${escapeHtml(e.currency || "")}</div></div>
           <div><span class="small">Qty/Price</span><div>${escapeHtml(formatQty(e.qty))} / ${escapeHtml((e.currency_symbol || currencySymbolForCode(e.currency)) + (e.price_display || formatPrice(e.price)))}</div></div>
           <div><span class="small">Unrealized PnL</span><div>${escapeHtml(formatMoney(e.unrealized_pnl, baseCurrencySymbol, 2))}</div></div>
           <div><span class="small">Realized PnL</span><div>${escapeHtml(formatMoney(e.realized_pnl, baseCurrencySymbol, 2))}</div></div>
+          <div><span class="small">Missed High</span><div>${escapeHtml(formatMissedHighCardText(e))}</div></div>
           <div><span class="small">Reason</span><div>${escapeHtml(e.reason || "")}</div></div>
         </div>
         ${imageBlocks ? `<div style="margin-top:8px; display:grid; gap:8px;">${imageBlocks}</div>` : ""}

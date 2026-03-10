@@ -4,5 +4,8 @@ __pycache__/
 data/*.sqlite
 data/backups/*.sqlite
 data/cache/
+data/uploads/
 .env.runtime
 .access_info
+trading_data.zip
+runtime_bundle*.zip

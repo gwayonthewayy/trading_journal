@@ -71,6 +71,12 @@
               <button type="button" class="th-filter-btn" aria-label="Filter Ticker" title="Filter Ticker">v</button>
             </span>
           </th>
+          <th class="th-filterable" data-table-filter-key="symbol_name" data-table-filter-label="Name">
+            <span class="th-filter-head">
+              <span class="th-filter-title">Name</span>
+              <button type="button" class="th-filter-btn" aria-label="Filter Name" title="Filter Name">v</button>
+            </span>
+          </th>
           <th class="th-filterable" data-table-filter-key="market_exchange" data-table-filter-label="Market/Exchange">
             <span class="th-filter-head">
               <span class="th-filter-title">Market/Exchange</span>
@@ -83,17 +89,11 @@
               <button type="button" class="th-filter-btn" aria-label="Filter Currency" title="Filter Currency">v</button>
             </span>
           </th>
-          <th class="th-filterable" data-table-filter-key="symbol_name" data-table-filter-label="Name">
-            <span class="th-filter-head">
-              <span class="th-filter-title">Name</span>
-              <button type="button" class="th-filter-btn" aria-label="Filter Name" title="Filter Name">v</button>
-            </span>
-          </th>
           <th>Qty</th>
-          <th>Avg Entry</th>
+          <th>Avg Entry (Local)</th>
           <th>SL/TP</th>
-          <th>Cost Amount</th>
-          <th>Open Risk</th>
+          <th>Cost Amount (Local)</th>
+          <th>Open Risk (Local)</th>
           <th>Open Risk % (Position)</th>
           <th>Risk % (Total Cost)</th>
         </tr>
@@ -110,16 +110,15 @@
           data-filter-name="{{ row.symbol_name or '' }}"
         >
           <td class="col-portfolio-ticker"><strong>{{ row.ticker }}</strong></td>
+          <td>{{ row.symbol_name or "" }}</td>
           <td>{{ row.market or "" }} / {{ row.exchange or "" }}</td>
           <td>{{ row.currency or "" }}</td>
-          <td>{{ row.symbol_name or "" }}</td>
           <td>{{ "{:,.4f}".format(row.qty_open) }}</td>
-          {% set row_currency_symbol = "$" if row.currency == "USD" else "₩" if row.currency == "KRW" else "HK$" if row.currency == "HKD" else "" %}
-          <td>{{ row_currency_symbol }}{{ "{:,.4f}".format(row.avg_entry_price) }}</td>
+          <td>{{ row.currency_symbol }}{{ "{:,.4f}".format(row.avg_entry_price_local if row.avg_entry_price_local is defined else row.avg_entry_price) }}</td>
           <td>{{ row.sl_tp }}</td>
-          <td>{{ data.base_currency_symbol }}{{ "{:,.2f}".format(row.amount_cost) }}</td>
-          <td>{{ data.base_currency_symbol }}{{ "{:,.2f}".format(row.open_risk) }}</td>
-          <td>{{ "%.2f"|format(row.open_risk_pct) }}%</td>
+          <td>{{ row.currency_symbol }}{{ "{:,.2f}".format(row.amount_cost_local if row.amount_cost_local is defined else row.amount_cost) }}</td>
+          <td>{{ row.currency_symbol }}{{ "{:,.2f}".format(row.open_risk_local if row.open_risk_local is defined else row.open_risk) }}</td>
+          <td>{{ "%.2f"|format(row.open_risk_pct_local if row.open_risk_pct_local is defined else row.open_risk_pct) }}%</td>
           <td>{{ "%.2f"|format(row.open_risk_total_cost_pct) }}%</td>
         </tr>
         <tr class="portfolio-row-detail" data-filter-group="{{ loop.index }}">
@@ -160,14 +159,13 @@
                       <td>{{ lot.lot_id }}</td>
                       <td>{{ lot.opened_at }}</td>
                       <td>{{ "{:,.4f}".format(lot.qty_open) }}</td>
-                      {% set lot_currency_symbol = "$" if lot.currency == "USD" else "₩" if lot.currency == "KRW" else "HK$" if lot.currency == "HKD" else "" %}
-                      <td class="inline-editable" data-inline-portfolio-field="entry_price">{{ lot_currency_symbol }}{{ "{:,.4f}".format(lot.entry_price) }}</td>
+                      <td class="inline-editable" data-inline-portfolio-field="entry_price">{{ lot.currency_symbol if lot.currency_symbol is defined else "" }}{{ "{:,.4f}".format(lot.entry_price) }}</td>
                       <td class="inline-editable" data-inline-portfolio-field="sl">{{ lot.sl_display }}</td>
                       <td class="inline-editable" data-inline-portfolio-field="tp">{{ lot.tp_display }}</td>
-                      <td>{{ data.base_currency_symbol }}{{ "{:,.2f}".format(lot.buy_fee) }}</td>
+                      <td>{{ lot.currency_symbol if lot.currency_symbol is defined else "" }}{{ "{:,.2f}".format(lot.buy_fee_local if lot.buy_fee_local is defined else lot.buy_fee) }}</td>
                       <td class="inline-editable col-lot-reason" data-inline-portfolio-field="buy_reason">{{ lot.buy_reason or "" }}</td>
                       <td class="inline-editable col-lot-note" data-inline-portfolio-field="note">{{ lot.note or "" }}</td>
-                      <td>{{ data.base_currency_symbol }}{{ "{:,.2f}".format(lot.open_risk) }}</td>
+                      <td>{{ lot.currency_symbol if lot.currency_symbol is defined else "" }}{{ "{:,.2f}".format(lot.open_risk_local if lot.open_risk_local is defined else lot.open_risk) }}</td>
                       {% if can_write %}
                       <td>
                         <div class="lot-edit-controls" data-lot-id="{{ lot.lot_id }}">
@@ -221,8 +219,8 @@
                         <td>{{ s.ts }}</td>
                         <td>{{ "{:,.4f}".format(s.qty) if s.qty is not none else "" }}</td>
                         <td>{{ s.currency_symbol }}{{ s.price_display if s.price is not none else "" }}</td>
-                        <td>{{ data.base_currency_symbol }}{{ "{:,.2f}".format(s.fee) if s.fee is not none else "" }}</td>
-                        <td>{{ data.base_currency_symbol }}{{ "{:,.2f}".format(s.realized_pnl) if s.realized_pnl is not none else "" }}</td>
+                        <td>{{ s.currency_symbol }}{{ "{:,.2f}".format(s.fee_local if s.fee_local is defined else s.fee) if (s.fee_local is defined or s.fee is not none) else "" }}</td>
+                        <td>{{ s.currency_symbol }}{{ "{:,.2f}".format(s.realized_pnl_local if s.realized_pnl_local is defined else s.realized_pnl) if (s.realized_pnl_local is defined or s.realized_pnl is not none) else "" }}</td>
                         <td class="col-sell-alloc">{{ s.allocation_text or "-" }}</td>
                         <td>{{ s.reason or "" }}</td>
                         <td>{{ s.note or "" }}</td>
@@ -241,7 +239,7 @@
         </tr>
       {% endfor %}
         <tr class="portfolio-total-row">
-          <th class="col-portfolio-ticker">TOTAL</th>
+          <th class="col-portfolio-ticker">TOTAL (Base)</th>
           <th></th>
           <th></th>
           <th></th>
@@ -280,12 +278,12 @@
   const portfolioMarketRefreshBtn = document.getElementById("portfolio-market-refresh-btn");
   const portfolioMarketStatus = document.getElementById("portfolio-market-status");
   const detailRowByGroup = new Map(portfolioDetailRows.map((row) => [row.dataset.filterGroup, row]));
-  const PORTFOLIO_COLUMN_PREF_KEY = "tj_portfolio_columns_v1";
+  const PORTFOLIO_COLUMN_PREF_KEY = "tj_portfolio_columns_v2";
   const PORTFOLIO_COLUMNS = [
     { index: 1, label: "Ticker" },
-    { index: 2, label: "Market/Exchange" },
-    { index: 3, label: "Currency" },
-    { index: 4, label: "Name" },
+    { index: 2, label: "Name" },
+    { index: 3, label: "Market/Exchange" },
+    { index: 4, label: "Currency" },
     { index: 5, label: "Qty" },
     { index: 6, label: "Avg Entry" },
     { index: 7, label: "SL/TP" },
@@ -794,19 +792,11 @@
 
       const slRaw = String(slInput.value || "").trim();
       const tpRaw = String(tpInput.value || "").trim();
-      if (slRaw !== "") payload.new_sl = Number(slRaw);
-      if (tpRaw !== "") payload.new_tp = Number(tpRaw);
+      if (slRaw !== "") payload.new_sl = parseInlineNumber(slRaw, "SL", false);
+      if (tpRaw !== "") payload.new_tp = parseInlineNumber(tpRaw, "TP", false);
 
       if (payload.new_sl === undefined && payload.new_tp === undefined) {
         msg.textContent = "Enter SL or TP.";
-        return;
-      }
-      if (payload.new_sl !== undefined && !Number.isFinite(payload.new_sl)) {
-        msg.textContent = "SL must be a valid number.";
-        return;
-      }
-      if (payload.new_tp !== undefined && !Number.isFinite(payload.new_tp)) {
-        msg.textContent = "TP must be a valid number.";
         return;
       }
 

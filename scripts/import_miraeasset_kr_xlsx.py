@@ -546,7 +546,12 @@ def _planned_sell_qp_key(planned: PlannedSell) -> tuple[str, str, str, float, fl
     )
 
 
-def build_import_plan(source_rows: list[SourceRow]) -> ImportPlan:
+def build_import_plan(
+    source_rows: list[SourceRow],
+    *,
+    default_trade_time: time = time(9, 0, 0),
+    keep_source_time_if_present: bool = False,
+) -> ImportPlan:
     open_lots: dict[str, deque[dict[str, float | str]]] = defaultdict(deque)
     events: list[PlannedBuy | PlannedSell] = []
     skipped_sells: list[SkippedSell] = []
@@ -560,9 +565,18 @@ def build_import_plan(source_rows: list[SourceRow]) -> ImportPlan:
             continue
 
         buy_fee, sell_fee = _split_fee(row)
-        base_ts = datetime.combine(row.trade_dt.date(), time(9, 0, 0)) + timedelta(
-            seconds=row.row_no * 2
-        )
+        base_time = default_trade_time
+        if keep_source_time_if_present:
+            src_time = row.trade_dt.time()
+            if (
+                src_time.hour != 0
+                or src_time.minute != 0
+                or src_time.second != 0
+                or src_time.microsecond != 0
+            ):
+                base_time = src_time.replace(tzinfo=None)
+
+        base_ts = datetime.combine(row.trade_dt.date(), base_time) + timedelta(seconds=row.row_no * 2)
 
         if row.buy_qty > 0:
             buy_key = f"row_{row.row_no}"
@@ -584,6 +598,9 @@ def build_import_plan(source_rows: list[SourceRow]) -> ImportPlan:
             available_qty = sum(float(x["qty_open"]) for x in open_lots[ticker])
             sell_qty_to_apply = row.sell_qty
             sell_fee_to_apply = sell_fee
+            # File-only FIFO is used for preview and rough shortage detection.
+            # Final SELL allocation is resolved against DB runtime FIFO during apply.
+            file_fifo_consumption_qty = row.sell_qty
             if row.sell_qty > available_qty + 1e-9:
                 applied_qty = max(0.0, available_qty)
                 ignored_qty = max(0.0, row.sell_qty - applied_qty)
@@ -599,14 +616,11 @@ def build_import_plan(source_rows: list[SourceRow]) -> ImportPlan:
                         ignored_qty=ignored_qty,
                     )
                 )
-                if applied_qty <= 1e-9:
-                    continue
-                sell_qty_to_apply = applied_qty
-                # Scale fee by applied portion for partial imports.
-                ratio = sell_qty_to_apply / row.sell_qty if row.sell_qty > 0 else 0.0
-                sell_fee_to_apply = sell_fee * ratio
+                # Keep full SELL event in plan and let runtime FIFO (existing DB lots)
+                # decide whether it can be allocated.
+                file_fifo_consumption_qty = applied_qty
 
-            remain = sell_qty_to_apply
+            remain = file_fifo_consumption_qty
             allocations: list[tuple[str, float]] = []
             while remain > 1e-9:
                 head = open_lots[ticker][0]
@@ -994,7 +1008,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description=(
             "Import Mirae Asset KR trade history xlsx into trading journal DB. "
-            "Rows with sell-only and insufficient in-file open qty are skipped."
+            "Rows with insufficient in-file open qty are still planned and "
+            "then resolved against DB runtime FIFO during apply."
         )
     )
     parser.add_argument(
@@ -1085,6 +1100,7 @@ def main() -> None:
         f" BUY={sum(1 for x in plan.events if isinstance(x, PlannedBuy))}"
         f", SELL={sum(1 for x in plan.events if isinstance(x, PlannedSell))}"
     )
+    print(f"file_fifo_shortfall_rows: {len(plan.skipped_sells)}")
     print(f"skipped_sell_rows: {len(plan.skipped_sells)}")
     print(f"unmapped_names: {len(plan.unmapped_names)}")
 
@@ -1094,7 +1110,7 @@ def main() -> None:
             print(f"- {name}")
 
     if plan.skipped_sells:
-        print("skipped_sell_samples:")
+        print("file_fifo_shortfall_samples:")
         for row in plan.skipped_sells[: args.show_limit]:
             print(
                 f"- row={row.row_no}, date={row.trade_dt}, name={row.name}, "

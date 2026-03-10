@@ -1,0 +1,201 @@
+{% extends "base.html" %}
+
+{% block page_header %}
+<section class="page-head">
+  <h1>Monthly Check</h1>
+  <p>월별 닫힌 거래(SELL 체결 기준) 통계 확인 페이지입니다.</p>
+  <div class="pill-row">
+    <span class="pill">Range: {{ data.start_month }} ~ {{ data.end_month }}</span>
+    <span class="pill">Months: {{ data.month_options|length }}</span>
+  </div>
+</section>
+{% endblock %}
+
+{% block content %}
+<section class="card">
+  <div class="card-head">
+    <h3>Month Filter</h3>
+    <p>2025-01부터 원하는 월만 선택해서 볼 수 있습니다.</p>
+  </div>
+  <div class="month-filter-row">
+    <label for="month-filter-select">
+      Month
+      <select id="month-filter-select" class="month-filter-select">
+        <option value="all" selected>All</option>
+        {% for month in data.month_options_desc %}
+        <option value="{{ month }}">{{ month }}</option>
+        {% endfor %}
+      </select>
+    </label>
+  </div>
+</section>
+
+<section class="card">
+  <div class="card-head">
+    <h3>Monthly Matrix</h3>
+    <p>첫 번째 열은 년월, 나머지 열은 월별 통계 항목입니다.</p>
+  </div>
+  <div class="table-wrap monthly-check-matrix-wrap">
+    <table id="monthly-check-matrix" class="monthly-check-table">
+      <thead>
+        <tr>
+          <th>Year-Month</th>
+          <th>Avg Profit</th>
+          <th>Avg Loss</th>
+          <th>Win Rate</th>
+          <th>Success/Failure</th>
+          <th>Adj. Success/Failure</th>
+          <th>Max Profit</th>
+          <th>Max Loss</th>
+          <th>Avg Win Hold Days</th>
+          <th>Avg Loss Hold Days</th>
+          <th>Trades</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in data.rows %}
+        <tr data-month="{{ row.month_label }}">
+          <td>{{ row.month_label }}</td>
+          <td>{{ "%.2f"|format(row.avg_profit_pct) if row.avg_profit_pct is not none else "-" }}%</td>
+          <td>{{ "%.2f"|format(row.avg_loss_pct) if row.avg_loss_pct is not none else "-" }}%</td>
+          <td>{{ "%.2f"|format(row.win_rate_pct) if row.win_rate_pct is not none else "-" }}%</td>
+          <td>{{ "%.2f"|format(row.success_failure_ratio) if row.success_failure_ratio is not none else "-" }}</td>
+          <td>{{ "%.2f"|format(row.adjusted_success_failure_ratio) if row.adjusted_success_failure_ratio is not none else "-" }}</td>
+          <td>{{ "%.2f"|format(row.max_profit_pct) if row.max_profit_pct is not none else "-" }}%</td>
+          <td>{{ "%.2f"|format(row.max_loss_pct) if row.max_loss_pct is not none else "-" }}%</td>
+          <td>{{ "%.1f"|format(row.avg_win_hold_days) if row.avg_win_hold_days is not none else "-" }}</td>
+          <td>{{ "%.1f"|format(row.avg_loss_hold_days) if row.avg_loss_hold_days is not none else "-" }}</td>
+          <td>{{ row.trade_count }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="card">
+  <div class="card-head">
+    <h3>Transposed View</h3>
+    <p>항목별로 월 추이를 가로 스크롤로 비교합니다.</p>
+  </div>
+  <div class="table-wrap monthly-check-transposed-wrap">
+    <table class="monthly-check-transposed-table">
+      <thead>
+        <tr>
+          <th>Metric</th>
+          {% for month in data.month_options %}
+          <th>{{ month }}</th>
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for metric in data.transposed_rows %}
+        <tr>
+          <td>{{ metric["label"] }}</td>
+          {% for value in metric["values"] %}
+          <td>
+            {% if value is none %}
+            -
+            {% elif metric["format"] == "pct" %}
+            {{ "%.2f"|format(value) }}%
+            {% elif metric["format"] == "days" %}
+            {{ "%.1f"|format(value) }}
+            {% elif metric["format"] == "count" %}
+            {{ value|int }}
+            {% else %}
+            {{ "%.2f"|format(value) }}
+            {% endif %}
+          </td>
+          {% endfor %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="card">
+  <div class="card-head">
+    <h3>Overall Summary</h3>
+    <p>선택 월과 별개로 전체 기간 종합 통계입니다.</p>
+  </div>
+  <div class="table-wrap monthly-check-summary-wrap">
+    <table class="monthly-check-summary-table">
+      <thead>
+        <tr>
+          <th>Metric</th>
+          <th>Value</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Trades</td>
+          <td>{{ data.summary.trade_count if data.summary.trade_count is defined else 0 }}</td>
+        </tr>
+        <tr>
+          <td>Avg Profit</td>
+          <td>{{ "%.2f"|format(data.summary.avg_profit_pct) if data.summary.avg_profit_pct is defined and data.summary.avg_profit_pct is not none else "-" }}%</td>
+        </tr>
+        <tr>
+          <td>Avg Loss</td>
+          <td>{{ "%.2f"|format(data.summary.avg_loss_pct) if data.summary.avg_loss_pct is defined and data.summary.avg_loss_pct is not none else "-" }}%</td>
+        </tr>
+        <tr>
+          <td>Win Rate</td>
+          <td>{{ "%.2f"|format(data.summary.win_rate_pct) if data.summary.win_rate_pct is defined and data.summary.win_rate_pct is not none else "-" }}%</td>
+        </tr>
+        <tr>
+          <td>Success/Failure</td>
+          <td>{{ "%.2f"|format(data.summary.success_failure_ratio) if data.summary.success_failure_ratio is defined and data.summary.success_failure_ratio is not none else "-" }}</td>
+        </tr>
+        <tr>
+          <td>Adj. Success/Failure</td>
+          <td>{{ "%.2f"|format(data.summary.adjusted_success_failure_ratio) if data.summary.adjusted_success_failure_ratio is defined and data.summary.adjusted_success_failure_ratio is not none else "-" }}</td>
+        </tr>
+        <tr>
+          <td>Max Profit</td>
+          <td>{{ "%.2f"|format(data.summary.max_profit_pct) if data.summary.max_profit_pct is defined and data.summary.max_profit_pct is not none else "-" }}%</td>
+        </tr>
+        <tr>
+          <td>Max Loss</td>
+          <td>{{ "%.2f"|format(data.summary.max_loss_pct) if data.summary.max_loss_pct is defined and data.summary.max_loss_pct is not none else "-" }}%</td>
+        </tr>
+        <tr>
+          <td>Avg Win Hold Days</td>
+          <td>{{ "%.1f"|format(data.summary.avg_win_hold_days) if data.summary.avg_win_hold_days is defined and data.summary.avg_win_hold_days is not none else "-" }}</td>
+        </tr>
+        <tr>
+          <td>Avg Loss Hold Days</td>
+          <td>{{ "%.1f"|format(data.summary.avg_loss_hold_days) if data.summary.avg_loss_hold_days is defined and data.summary.avg_loss_hold_days is not none else "-" }}</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  (() => {
+    const monthSelect = document.getElementById("month-filter-select");
+    const matrixTable = document.getElementById("monthly-check-matrix");
+    if (!monthSelect || !matrixTable) return;
+    const rows = Array.from(matrixTable.querySelectorAll("tbody tr[data-month]"));
+
+    function applyMonthFilter(monthKey) {
+      const key = monthKey || "all";
+      rows.forEach((row) => {
+        const rowMonth = row.dataset.month || "";
+        const visible = key === "all" || rowMonth === key;
+        row.hidden = !visible;
+      });
+    }
+
+    monthSelect.addEventListener("change", () => {
+      applyMonthFilter(monthSelect.value);
+    });
+
+    applyMonthFilter(monthSelect.value);
+  })();
+</script>
+{% endblock %}

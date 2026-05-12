@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from enum import Enum
 from typing import Optional
 
@@ -40,6 +40,14 @@ class TradeGroup(SQLModel, table=True):
     rule_compliance: Optional[str] = Field(default=None, max_length=80)
     mistake_tag: Optional[str] = Field(default=None, max_length=120)
     minervini_checklist: Optional[str] = Field(default=None)
+    candidate_id: Optional[str] = Field(default=None, max_length=140, index=True)
+    scan_date: Optional[date] = Field(default=None)
+    trade_status: Optional[str] = Field(default="candidate", max_length=32)
+    pivot_price: Optional[float] = Field(default=None, ge=0)
+    buy_zone_low: Optional[float] = Field(default=None, ge=0)
+    buy_zone_high: Optional[float] = Field(default=None, ge=0)
+    invalidation_price: Optional[float] = Field(default=None, ge=0)
+    overlay_snapshot_json: Optional[str] = Field(default=None)
     opened_at: datetime = Field(default_factory=datetime.utcnow)
     closed_at: Optional[datetime] = Field(default=None)
 

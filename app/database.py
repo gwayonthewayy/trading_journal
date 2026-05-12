@@ -60,6 +60,14 @@ def ensure_compat_schema_columns() -> None:
             "rule_compliance": "TEXT",
             "mistake_tag": "TEXT",
             "minervini_checklist": "TEXT",
+            "candidate_id": "TEXT",
+            "scan_date": "TEXT",
+            "trade_status": "TEXT DEFAULT 'candidate'",
+            "pivot_price": "REAL",
+            "buy_zone_low": "REAL",
+            "buy_zone_high": "REAL",
+            "invalidation_price": "REAL",
+            "overlay_snapshot_json": "TEXT",
         },
     }
 

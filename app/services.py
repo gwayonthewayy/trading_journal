@@ -75,6 +75,47 @@ _quote_cache: dict[str, dict[str, Any]] = {}
 _name_cache: dict[str, dict[str, Any]] = {}
 _daily_high_cache: dict[str, dict[str, Any]] = {}
 
+TRADE_STATUS_VALUES = {"candidate", "planned", "active", "closed", "archived"}
+WEAK_OR_UNKNOWN_RS = {"RS미확인", "RS약세", "RS약함"}
+JOURNAL_IMPORT_REQUIRED_FIELDS = {
+    "candidate_id",
+    "scan_date",
+    "market",
+    "ticker",
+    "name",
+    "close",
+    "source_file",
+    "setup_type",
+    "trade_stance",
+    "leadership_gate",
+    "trend_template_pass",
+    "entry_zone_label",
+    "base_quality_label",
+    "base_quality_proxy_label",
+    "base_quality_method",
+    "risk_first_status",
+    "rr_status",
+    "planned_entry",
+    "planned_stop",
+    "planned_risk_pct",
+    "pivot_price",
+    "buy_zone_low",
+    "buy_zone_high",
+    "invalidation_price",
+    "sell_plan",
+    "minervini_summary",
+    "overlay_snapshot",
+}
+ACTIONABLE_MANDATORY_FIELDS = (
+    "planned_entry",
+    "planned_stop",
+    "planned_risk_pct",
+    "sell_plan",
+    "leadership_gate",
+    "trend_template_pass",
+)
+DEFAULT_MAX_PLANNED_RISK_PCT = 8.0
+
 MONTHLY_CHECK_METRICS: list[dict[str, str]] = [
     {"key": "trade_count", "label": "Trades", "format": "count"},
     {"key": "avg_profit_pct", "label": "Avg Profit", "format": "pct"},
@@ -872,6 +913,204 @@ def create_review(session: Session, req: ReviewRequest) -> dict[str, Any]:
     session.flush()
 
     return {"event_id": event.id, "trade_group_id": group.id}
+
+
+def _parse_import_scan_date(value: Any) -> date | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        return date.fromisoformat(text[:10])
+    except ValueError:
+        return None
+
+
+def _optional_float(value: Any) -> float | None:
+    if value is None:
+        return None
+    try:
+        value_f = float(value)
+    except (TypeError, ValueError):
+        return None
+    if math.isnan(value_f):
+        return None
+    return value_f
+
+
+def _optional_bool(value: Any) -> bool | None:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return value
+    text = str(value).strip().lower()
+    if text in {"true", "1", "yes", "y", "t"}:
+        return True
+    if text in {"false", "0", "no", "n", "f"}:
+        return False
+    return None
+
+
+def _import_candidate_missing_actionable_fields(candidate: dict[str, Any], max_risk_pct: float) -> list[str]:
+    missing: list[str] = []
+    planned_entry = _optional_float(candidate.get("planned_entry"))
+    planned_stop = _optional_float(candidate.get("planned_stop"))
+    planned_risk_pct = _optional_float(candidate.get("planned_risk_pct"))
+    if planned_entry is None:
+        missing.append("planned_entry")
+    if planned_stop is None:
+        missing.append("planned_stop")
+    if planned_risk_pct is None:
+        missing.append("planned_risk_pct")
+    elif planned_risk_pct <= 0 or planned_risk_pct > max_risk_pct:
+        missing.append("planned_risk_pct_out_of_range")
+    if not _normalize_optional_text(candidate.get("sell_plan")):
+        missing.append("sell_plan")
+    if _normalize_optional_text(candidate.get("leadership_gate")) in WEAK_OR_UNKNOWN_RS:
+        missing.append("leadership_gate")
+    if _optional_bool(candidate.get("trend_template_pass")) is not True:
+        missing.append("trend_template_pass")
+    return missing
+
+
+def _normalize_import_trade_stance(candidate: dict[str, Any], max_risk_pct: float) -> str:
+    stance = (_normalize_optional_text(candidate.get("trade_stance")) or "watchlist_only").lower()
+    leadership = _normalize_optional_text(candidate.get("leadership_gate"))
+    if stance not in {"actionable", "pilot_only", "watchlist_only", "excluded"}:
+        stance = "watchlist_only"
+    if leadership in WEAK_OR_UNKNOWN_RS and stance == "actionable":
+        return "watchlist_only"
+    if stance == "actionable" and _import_candidate_missing_actionable_fields(candidate, max_risk_pct):
+        return "pilot_only"
+    return stance
+
+
+def _build_import_snapshot(candidate: dict[str, Any], trade_stance: str, max_risk_pct: float) -> str:
+    snapshot = {
+        "schema": "journal_import_candidates.json",
+        "trade_stance": trade_stance,
+        "mandatory_missing_fields": _import_candidate_missing_actionable_fields(candidate, max_risk_pct),
+        "overlay_snapshot": candidate.get("overlay_snapshot") or {},
+        "candidate": {
+            key: value
+            for key, value in candidate.items()
+            if key != "overlay_snapshot"
+        },
+    }
+    return json.dumps(snapshot, ensure_ascii=False, sort_keys=True)
+
+
+def _validate_import_candidate(candidate: dict[str, Any]) -> list[str]:
+    errors: list[str] = []
+    missing_keys = sorted(JOURNAL_IMPORT_REQUIRED_FIELDS.difference(candidate.keys()))
+    if missing_keys:
+        errors.append("missing_fields=" + ",".join(missing_keys))
+    if not _normalize_optional_text(candidate.get("candidate_id")):
+        errors.append("candidate_id is required")
+    if _parse_import_scan_date(candidate.get("scan_date")) is None:
+        errors.append("scan_date must be YYYY-MM-DD")
+    if not _normalize_optional_text(candidate.get("market")):
+        errors.append("market is required")
+    if not _normalize_optional_text(candidate.get("ticker")):
+        errors.append("ticker is required")
+    if not isinstance(candidate.get("overlay_snapshot"), dict):
+        errors.append("overlay_snapshot must be an object")
+    return errors
+
+
+def import_screener_candidates(
+    session: Session,
+    payload: dict[str, Any],
+    *,
+    apply: bool = False,
+    max_risk_pct: float = DEFAULT_MAX_PLANNED_RISK_PCT,
+) -> dict[str, Any]:
+    candidates = payload.get("candidates")
+    if not isinstance(candidates, list):
+        raise ValueError("journal import payload must contain a candidates list")
+
+    summary: dict[str, Any] = {
+        "schema_version": payload.get("schema_version"),
+        "apply": apply,
+        "seen": len(candidates),
+        "created": 0,
+        "updated": 0,
+        "skipped": 0,
+        "rows": [],
+    }
+
+    for raw_candidate in candidates:
+        if not isinstance(raw_candidate, dict):
+            summary["skipped"] += 1
+            summary["rows"].append({"candidate_id": None, "status": "skipped", "errors": ["candidate must be an object"]})
+            continue
+
+        errors = _validate_import_candidate(raw_candidate)
+        candidate_id = _normalize_optional_text(raw_candidate.get("candidate_id"))
+        if errors:
+            summary["skipped"] += 1
+            summary["rows"].append({"candidate_id": candidate_id, "status": "skipped", "errors": errors})
+            continue
+
+        market = _normalize_upper_optional(raw_candidate.get("market"))
+        ticker = normalize_ticker(str(raw_candidate.get("ticker")), market)
+        name = _normalize_optional_text(raw_candidate.get("name")) or ticker
+        scan_date = _parse_import_scan_date(raw_candidate.get("scan_date"))
+        setup_type = _normalize_optional_text(raw_candidate.get("setup_type"))
+        trade_stance = _normalize_import_trade_stance(raw_candidate, max_risk_pct)
+        requested_status = _normalize_optional_text(raw_candidate.get("trade_status")) or "candidate"
+        trade_status = requested_status if requested_status in TRADE_STATUS_VALUES else "candidate"
+        if trade_status == "planned" and trade_stance != "actionable":
+            trade_status = "candidate"
+
+        existing = session.exec(select(TradeGroup).where(TradeGroup.candidate_id == candidate_id)).first()
+        action = "updated" if existing is not None else "created"
+        if apply:
+            _ensure_symbol(session, ticker, name, market=market)
+            group = existing or TradeGroup(title="")
+            group.title = f"{ticker} {name} {setup_type or 'Minervini'}".strip()
+            group.tags = ",".join(
+                part
+                for part in [
+                    "minervini",
+                    "screener_candidate",
+                    market,
+                    trade_stance,
+                    _normalize_optional_text(raw_candidate.get("leadership_gate")),
+                ]
+                if part
+            )
+            group.note = _normalize_optional_text(raw_candidate.get("minervini_summary"))
+            group.setup_type = setup_type
+            group.planned_entry = _optional_float(raw_candidate.get("planned_entry"))
+            group.planned_stop = _optional_float(raw_candidate.get("planned_stop"))
+            group.planned_risk_pct = _optional_float(raw_candidate.get("planned_risk_pct"))
+            group.minervini_checklist = _normalize_optional_text(raw_candidate.get("sell_plan"))
+            group.candidate_id = candidate_id
+            group.scan_date = scan_date
+            group.trade_status = trade_status
+            group.pivot_price = _optional_float(raw_candidate.get("pivot_price"))
+            group.buy_zone_low = _optional_float(raw_candidate.get("buy_zone_low"))
+            group.buy_zone_high = _optional_float(raw_candidate.get("buy_zone_high"))
+            group.invalidation_price = _optional_float(raw_candidate.get("invalidation_price"))
+            group.overlay_snapshot_json = _build_import_snapshot(raw_candidate, trade_stance, max_risk_pct)
+            session.add(group)
+
+        summary[action] += 1
+        summary["rows"].append(
+            {
+                "candidate_id": candidate_id,
+                "status": action,
+                "ticker": ticker,
+                "market": market,
+                "trade_status": trade_status,
+                "trade_stance": trade_stance,
+                "mandatory_missing_fields": _import_candidate_missing_actionable_fields(raw_candidate, max_risk_pct),
+            }
+        )
+
+    if apply:
+        session.flush()
+    return summary
 
 
 def check_duplicate_event(session: Session, req: DuplicateCheckRequest) -> dict[str, Any]:
@@ -3811,6 +4050,14 @@ def build_trade_detail(session: Session, trade_group_id: int) -> dict[str, Any]:
             "rule_compliance": group.rule_compliance,
             "mistake_tag": group.mistake_tag,
             "minervini_checklist": group.minervini_checklist,
+            "candidate_id": group.candidate_id,
+            "scan_date": group.scan_date,
+            "trade_status": group.trade_status,
+            "pivot_price": group.pivot_price,
+            "buy_zone_low": group.buy_zone_low,
+            "buy_zone_high": group.buy_zone_high,
+            "invalidation_price": group.invalidation_price,
+            "overlay_snapshot_json": group.overlay_snapshot_json,
             "opened_at": group.opened_at,
             "closed_at": group.closed_at,
         },

@@ -852,6 +852,14 @@ def create_review(session: Session, req: ReviewRequest) -> dict[str, Any]:
         raise HTTPException(status_code=404, detail="trade_group not found")
 
     group.review = req.review_text
+    group.setup_type = _normalize_optional_text(req.setup_type)
+    group.planned_entry = req.planned_entry
+    group.planned_stop = req.planned_stop
+    group.planned_risk_pct = req.planned_risk_pct
+    group.realized_r = req.realized_r
+    group.rule_compliance = _normalize_optional_text(req.rule_compliance)
+    group.mistake_tag = _normalize_optional_text(req.mistake_tag)
+    group.minervini_checklist = _normalize_optional_text(req.minervini_checklist)
     session.add(group)
 
     event = Event(
@@ -3795,6 +3803,14 @@ def build_trade_detail(session: Session, trade_group_id: int) -> dict[str, Any]:
             "tags": group.tags,
             "note": group.note,
             "review": group.review,
+            "setup_type": group.setup_type,
+            "planned_entry": group.planned_entry,
+            "planned_stop": group.planned_stop,
+            "planned_risk_pct": group.planned_risk_pct,
+            "realized_r": group.realized_r,
+            "rule_compliance": group.rule_compliance,
+            "mistake_tag": group.mistake_tag,
+            "minervini_checklist": group.minervini_checklist,
             "opened_at": group.opened_at,
             "closed_at": group.closed_at,
         },

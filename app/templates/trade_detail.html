@@ -19,11 +19,58 @@
   </div>
   <p><strong>Tags:</strong> {{ data.trade_group.tags or "" }}</p>
   <p><strong>Note:</strong> {{ data.trade_group.note or "" }}</p>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Setup</th>
+          <th>Planned Entry</th>
+          <th>Planned Stop</th>
+          <th>Risk %</th>
+          <th>Realized R</th>
+          <th>Rule</th>
+          <th>Mistake</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>{{ data.trade_group.setup_type or "" }}</td>
+          <td>{{ data.trade_group.planned_entry if data.trade_group.planned_entry is not none else "" }}</td>
+          <td>{{ data.trade_group.planned_stop if data.trade_group.planned_stop is not none else "" }}</td>
+          <td>{{ "%.2f"|format(data.trade_group.planned_risk_pct) if data.trade_group.planned_risk_pct is not none else "" }}</td>
+          <td>{{ "%.2f"|format(data.trade_group.realized_r) if data.trade_group.realized_r is not none else "" }}</td>
+          <td>{{ data.trade_group.rule_compliance or "" }}</td>
+          <td>{{ data.trade_group.mistake_tag or "" }}</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  {% if data.trade_group.minervini_checklist %}
+    <h3>Minervini Checklist</h3>
+    <pre class="review-pre">{{ data.trade_group.minervini_checklist }}</pre>
+  {% endif %}
 
   <h3>Review</h3>
   {% if can_write %}
     <form id="review-form">
       <input type="hidden" name="trade_group_id" value="{{ data.trade_group.id }}" />
+      <div class="form-row">
+        <input name="setup_type" placeholder="Setup Type (VCP, Breakout, Pullback)" value="{{ data.trade_group.setup_type or "" }}" />
+        <input name="planned_entry" type="number" step="any" placeholder="Planned Entry" value="{{ data.trade_group.planned_entry if data.trade_group.planned_entry is not none else "" }}" />
+        <input name="planned_stop" type="number" step="any" placeholder="Planned Stop" value="{{ data.trade_group.planned_stop if data.trade_group.planned_stop is not none else "" }}" />
+        <input name="planned_risk_pct" type="number" step="any" placeholder="Risk %" value="{{ data.trade_group.planned_risk_pct if data.trade_group.planned_risk_pct is not none else "" }}" />
+      </div>
+      <div class="form-row">
+        <input name="realized_r" type="number" step="any" placeholder="Realized R" value="{{ data.trade_group.realized_r if data.trade_group.realized_r is not none else "" }}" />
+        <select name="rule_compliance">
+          <option value="">Rule Compliance</option>
+          {% for opt in ["규칙준수", "부분위반", "규칙위반", "정상손실", "좋은수익"] %}
+            <option value="{{ opt }}" {% if data.trade_group.rule_compliance == opt %}selected{% endif %}>{{ opt }}</option>
+          {% endfor %}
+        </select>
+        <input name="mistake_tag" placeholder="Mistake Tag" value="{{ data.trade_group.mistake_tag or "" }}" />
+      </div>
+      <textarea name="minervini_checklist" placeholder="Minervini checklist / VCS overlay snapshot">{{ data.trade_group.minervini_checklist or "" }}</textarea>
       <textarea name="review_text" placeholder="Write final review" required>{{ data.trade_group.review or "" }}</textarea>
       <button type="submit">Save Review</button>
       <div id="review-error" class="error"></div>
@@ -141,6 +188,14 @@
       const payload = {
         trade_group_id: Number(form.trade_group_id.value),
         review_text: form.review_text.value,
+        setup_type: form.setup_type.value || null,
+        planned_entry: form.planned_entry.value ? Number(form.planned_entry.value) : null,
+        planned_stop: form.planned_stop.value ? Number(form.planned_stop.value) : null,
+        planned_risk_pct: form.planned_risk_pct.value ? Number(form.planned_risk_pct.value) : null,
+        realized_r: form.realized_r.value ? Number(form.realized_r.value) : null,
+        rule_compliance: form.rule_compliance.value || null,
+        mistake_tag: form.mistake_tag.value || null,
+        minervini_checklist: form.minervini_checklist.value || null,
       };
 
       const res = await fetch("/api/review", {

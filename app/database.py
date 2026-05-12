@@ -51,6 +51,16 @@ def ensure_compat_schema_columns() -> None:
             "realized_pnl_local": "REAL",
             "image_url": "TEXT",
         },
+        "tradegroup": {
+            "setup_type": "TEXT",
+            "planned_entry": "REAL",
+            "planned_stop": "REAL",
+            "planned_risk_pct": "REAL",
+            "realized_r": "REAL",
+            "rule_compliance": "TEXT",
+            "mistake_tag": "TEXT",
+            "minervini_checklist": "TEXT",
+        },
     }
 
     with sqlite3.connect(DB_PATH) as conn:

@@ -65,6 +65,14 @@ class CashflowRequest(BaseModel):
 class ReviewRequest(BaseModel):
     trade_group_id: int
     review_text: str
+    setup_type: Optional[str] = None
+    planned_entry: Optional[float] = Field(default=None, ge=0)
+    planned_stop: Optional[float] = Field(default=None, ge=0)
+    planned_risk_pct: Optional[float] = Field(default=None, ge=0)
+    realized_r: Optional[float] = None
+    rule_compliance: Optional[str] = None
+    mistake_tag: Optional[str] = None
+    minervini_checklist: Optional[str] = None
 
 
 class DuplicateCheckRequest(BaseModel):

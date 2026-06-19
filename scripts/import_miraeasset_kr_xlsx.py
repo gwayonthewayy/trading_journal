@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 from xml.etree import ElementTree as ET
 from zipfile import ZipFile
@@ -300,6 +301,42 @@ def _build_name_to_ticker_map_from_naver() -> tuple[dict[str, str], dict[str, li
         else:
             ambiguous[stock_name] = sorted(codes)
     return unique, ambiguous
+
+
+def _ticker_from_autocomplete_payload(name: str, payload: dict[str, Any]) -> str | None:
+    matches: list[str] = []
+    for item in payload.get("items", []):
+        if not isinstance(item, dict):
+            continue
+        item_name = str(item.get("name") or "").strip()
+        code = str(item.get("code") or "").strip().upper()
+        nation = str(item.get("nationCode") or "").strip().upper()
+        if item_name == name.strip() and nation in {"", "KOR"} and re.fullmatch(r"[0-9A-Z]{6}", code):
+            matches.append(code)
+    unique = sorted(set(matches))
+    return unique[0] if len(unique) == 1 else None
+
+
+def _lookup_ticker_from_naver_autocomplete(name: str) -> str | None:
+    url = "https://ac.stock.naver.com/ac?" + urlencode(
+        {"q": name, "target": "stock", "lang": "ko", "st": "111", "r_lt": "111"}
+    )
+    req = Request(
+        url,
+        headers={
+            "User-Agent": "Mozilla/5.0",
+            "Accept": "application/json,text/plain,*/*",
+            "Referer": "https://finance.naver.com/",
+        },
+    )
+    try:
+        with urlopen(req, timeout=12) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except (OSError, ValueError, json.JSONDecodeError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    return _ticker_from_autocomplete_payload(name, payload)
 
 
 def _load_name_map_from_cache(cache_path: Path) -> tuple[dict[str, str], dict[str, list[str]]] | None:
@@ -745,6 +782,7 @@ def apply_import_plan(
     skipped_existing_buy = 0
     skipped_existing_sell = 0
     skipped_sell_missing_lot_map = 0
+    skipped_sell_missing_lot_samples: list[dict[str, Any]] = []
     skipped_existing_buy_without_lot_map = 0
     skipped_sell_allocation_conflict = 0
 
@@ -859,6 +897,16 @@ def apply_import_plan(
                 )
                 if not allocations_in:
                     skipped_sell_missing_lot_map += 1
+                    if len(skipped_sell_missing_lot_samples) < 20:
+                        skipped_sell_missing_lot_samples.append(
+                            {
+                                "row": planned.row_no,
+                                "date": planned.ts.date().isoformat(),
+                                "ticker": planned.ticker,
+                                "name": planned.name,
+                                "qty": planned.qty,
+                            }
+                        )
                     continue
 
                 note = (
@@ -937,6 +985,7 @@ def apply_import_plan(
         "skipped_existing_duplicate_buy_events": skipped_existing_buy,
         "skipped_existing_duplicate_sell_events": skipped_existing_sell,
         "skipped_sell_events_missing_lot_map": skipped_sell_missing_lot_map,
+        "skipped_sell_events_missing_lot_samples": skipped_sell_missing_lot_samples,
         "skipped_existing_buy_without_lot_map": skipped_existing_buy_without_lot_map,
         "skipped_sell_events_allocation_conflict": skipped_sell_allocation_conflict,
     }
@@ -1086,6 +1135,19 @@ def main() -> None:
     for row in source_rows:
         row.ticker = unique_map.get(row.name)
 
+    unresolved_names = sorted({row.name for row in source_rows if not row.ticker})
+    fallback_matches: dict[str, str] = {}
+    for name in unresolved_names:
+        ticker = _lookup_ticker_from_naver_autocomplete(name)
+        if ticker:
+            fallback_matches[name] = ticker
+            unique_map[name] = ticker
+    if fallback_matches:
+        _save_name_map_cache(cache_path, unique_map, ambiguous_map)
+        for row in source_rows:
+            if not row.ticker:
+                row.ticker = fallback_matches.get(row.name)
+
     plan = build_import_plan(source_rows)
     dedupe_existing = not args.no_dedupe_existing
 
@@ -1093,6 +1155,7 @@ def main() -> None:
     print(f"source_rows: {len(source_rows)}")
     print(f"name_map_unique: {len(unique_map)}")
     print(f"name_map_ambiguous: {len(ambiguous_map)}")
+    print(f"name_fallback_matches: {len(fallback_matches)}")
     print(f"dedupe_existing: {dedupe_existing}")
     print(f"planned_events: {len(plan.events)}")
     print(

@@ -25,6 +25,12 @@ from scripts.import_miraeasset_kr_xlsx import (
 )
 
 
+def _merge_numeric_result(aggregated: dict[str, int], result: dict[str, Any]) -> None:
+    for key, value in result.items():
+        if key in aggregated and isinstance(value, (int, float)):
+            aggregated[key] += int(value)
+
+
 @dataclass
 class OverseasRow:
     row_no: int
@@ -340,8 +346,8 @@ def main() -> None:
         )
         print(f"[{market}/{currency}] apply_done")
         for key, value in result.items():
-            aggregated[key] += int(value)
             print(f"[{market}/{currency}] {key}: {value}")
+        _merge_numeric_result(aggregated, result)
 
     print("apply: done")
     for key, value in aggregated.items():

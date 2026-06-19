@@ -23,6 +23,10 @@ from scripts.import_miraeasset_kr_xlsx import _parse_trade_date, _read_sheet_row
 
 IN_KR = "\uC785\uAE08"
 OUT_KR = "\uCD9C\uAE08"
+TRANSFER_IN_KR = "\uC774\uCCB4\uC785\uAE08"
+TRANSFER_OUT_KR = "\uC774\uCCB4\uCD9C\uAE08"
+EXTERNAL_IN_TYPES = {IN_KR, TRANSFER_IN_KR}
+EXTERNAL_OUT_TYPES = {OUT_KR, TRANSFER_OUT_KR}
 TIME_RE = re.compile(r"^\d{1,2}:\d{2}(:\d{2})?$")
 
 
@@ -38,6 +42,58 @@ class PlannedCashflow:
     counterparty_name: str
     counterparty_account: str
     note: str
+
+
+def _parse_cashflow_pair(
+    row: dict[int, Any],
+    detail: dict[int, Any],
+    row_no: int,
+    source_tag: str,
+    reverse_sign: bool,
+    apply_fee: bool,
+) -> PlannedCashflow | None:
+    trade_dt = _parse_trade_date(row.get(1))
+    tx_type = str(row.get(2) or "").strip()
+    if trade_dt is None or tx_type not in EXTERNAL_IN_TYPES | EXTERNAL_OUT_TYPES:
+        return None
+
+    is_current_statement = tx_type in {TRANSFER_IN_KR, TRANSFER_OUT_KR}
+    amount_krw = _to_float(row.get(6) if is_current_statement else row.get(4))
+    if amount_krw <= 0:
+        return None
+
+    hms = _parse_hms(detail.get(1))
+    ts = datetime.combine(trade_dt.date(), hms or time.min)
+    fee_krw = _to_float(row.get(8) if is_current_statement else detail.get(4))
+    institution = str(row.get(13) if is_current_statement else row.get(3) or "").strip()
+    counterparty_name = str(row.get(14) if is_current_statement else detail.get(2) or "").strip()
+    counterparty_account = str(detail.get(13) if is_current_statement else detail.get(3) or "").strip()
+
+    sign = 1.0 if tx_type in EXTERNAL_IN_TYPES else -1.0
+    if reverse_sign:
+        sign *= -1.0
+    signed_krw = sign * amount_krw
+    if apply_fee and fee_krw > 0:
+        signed_krw -= fee_krw
+
+    note = (
+        f"[{source_tag}] row={row_no} "
+        f"type={tx_type} institution={institution or '-'} "
+        f"counterparty={counterparty_name or '-'} {counterparty_account or '-'} "
+        f"amount_krw={amount_krw:.0f} fee_krw={fee_krw:.0f}"
+    )
+    return PlannedCashflow(
+        row_no=row_no,
+        ts=ts,
+        tx_type=tx_type,
+        amount_krw=amount_krw,
+        signed_krw=signed_krw,
+        fee_krw=fee_krw,
+        institution=institution,
+        counterparty_name=counterparty_name,
+        counterparty_account=counterparty_account,
+        note=note,
+    )
 
 
 def _parse_hms(value: Any) -> time | None:
@@ -93,52 +149,20 @@ def build_plan(
         row = rows[i]
         row_no = i + 1
 
-        trade_dt = _parse_trade_date(row.get(1))
-        tx_type = str(row.get(2) or "").strip()
-        amount_krw = _to_float(row.get(4))
-        institution = str(row.get(3) or "").strip()
-        if trade_dt is None or tx_type not in (IN_KR, OUT_KR) or amount_krw <= 0:
-            i += 1
-            continue
-
         detail = rows[i + 1] if i + 1 < len(rows) else {}
-        hms = _parse_hms(detail.get(1))
-        ts = datetime.combine(trade_dt.date(), hms or time.min)
-
-        fee_krw = _to_float(detail.get(4))
-        counterparty_name = str(detail.get(2) or "").strip()
-        counterparty_account = str(detail.get(3) or "").strip()
-
-        sign = 1.0 if tx_type == IN_KR else -1.0
-        if reverse_sign:
-            sign *= -1.0
-        signed_krw = sign * amount_krw
-        if apply_fee and fee_krw > 0:
-            signed_krw -= fee_krw
-
-        note = (
-            f"[{source_tag}] row={row_no} "
-            f"type={tx_type} institution={institution or '-'} "
-            f"counterparty={counterparty_name or '-'} {counterparty_account or '-'} "
-            f"amount_krw={amount_krw:.0f} fee_krw={fee_krw:.0f}"
+        item = _parse_cashflow_pair(
+            row,
+            detail,
+            row_no,
+            source_tag,
+            reverse_sign,
+            apply_fee,
         )
-        plan.append(
-            PlannedCashflow(
-                row_no=row_no,
-                ts=ts,
-                tx_type=tx_type,
-                amount_krw=amount_krw,
-                signed_krw=signed_krw,
-                fee_krw=fee_krw,
-                institution=institution,
-                counterparty_name=counterparty_name,
-                counterparty_account=counterparty_account,
-                note=note,
-            )
-        )
+        if item is not None:
+            plan.append(item)
 
-        # Move past the paired detail line when it exists.
-        if i + 1 < len(rows) and _parse_hms(detail.get(1)) is not None:
+        # Current statements also use a paired detail row without a timestamp.
+        if i + 1 < len(rows) and _parse_trade_date(detail.get(1)) is None:
             i += 2
         else:
             i += 1
@@ -325,12 +349,12 @@ def main() -> None:
         print("No valid transfer rows parsed.")
         raise SystemExit(0)
 
-    in_count = sum(1 for x in plan if x.tx_type == IN_KR)
-    out_count = sum(1 for x in plan if x.tx_type == OUT_KR)
+    in_count = sum(1 for x in plan if x.signed_krw > 0)
+    out_count = sum(1 for x in plan if x.signed_krw < 0)
     net_krw = sum(x.signed_krw for x in plan)
     print(f"input_path: {input_path}")
     print(f"planned_rows: {len(plan)}")
-    print(f"planned_breakdown: {IN_KR}={in_count}, {OUT_KR}={out_count}")
+    print(f"planned_breakdown: inflow={in_count}, outflow={out_count}")
     print(f"planned_net_krw: {net_krw:.0f}")
     print(f"date_range: {plan[0].ts.date()} ~ {plan[-1].ts.date()}")
 

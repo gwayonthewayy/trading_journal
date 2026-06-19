@@ -31,6 +31,9 @@
           <a href="/portfolio" class="{% if path.startswith('/portfolio') %}active{% endif %}">Portfolio</a>
           <a href="/stats" class="{% if path.startswith('/stats') %}active{% endif %}">Stats</a>
           <a href="/monthly-check" class="{% if path.startswith('/monthly-check') %}active{% endif %}">Monthly Check</a>
+          {% if role == "admin" %}
+            <a href="/broker-sync" class="{% if path.startswith('/broker-sync') %}active{% endif %}">KIS Sync</a>
+          {% endif %}
         </nav>
       {% else %}
         <div></div>

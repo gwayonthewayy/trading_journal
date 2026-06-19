@@ -1,0 +1,7 @@
+tunnel: REPLACE_WITH_TUNNEL_UUID
+credentials-file: /home/gyu123/.cloudflared/REPLACE_WITH_TUNNEL_UUID.json
+
+ingress:
+  - hostname: tjgyu.site
+    service: http://127.0.0.1:8000
+  - service: http_status:404

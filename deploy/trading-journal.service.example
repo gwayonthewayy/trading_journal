@@ -1,0 +1,19 @@
+[Unit]
+Description=Trading Journal web application
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=gyu123
+Group=gyuedit
+WorkingDirectory=/opt/gyu/trading_journal
+EnvironmentFile=/opt/gyu/trading_journal/.env.runtime
+ExecStart=/home/gyu123/.local/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

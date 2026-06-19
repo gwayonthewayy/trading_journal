@@ -18,6 +18,18 @@
   --journal-sticky-name-width: 120px;
 }
 
+.sync-env { align-self: flex-start; border: 1px solid #a8bac7; border-radius: 999px; padding: .45rem .8rem; font-weight: 800; letter-spacing: .08em; }
+.sync-env-real { background: #ffe6df; color: #8f2d1b; border-color: #e8a08d; }
+.sync-env-paper { background: #e2f2e8; color: #1e6540; border-color: #8fc6a5; }
+.sync-control-card { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 1rem; }
+.sync-actions { display: flex; gap: .6rem; flex-wrap: wrap; }
+.sync-error { color: #a82f22; font-weight: 700; }
+.allocation-form { display: flex; gap: .4rem; min-width: 230px; }
+.allocation-form input { min-width: 145px; }
+.eligible-lots { display: flex; gap: .35rem; flex-wrap: wrap; margin-bottom: .4rem; font-size: .78rem; color: var(--subtle); }
+.eligible-lots span { border: 1px solid var(--line); border-radius: 999px; padding: .2rem .45rem; background: rgba(255,255,255,.62); }
+@media (max-width: 720px) { .sync-control-card { align-items: stretch; flex-direction: column; } }
+
 * {
   box-sizing: border-box;
 }

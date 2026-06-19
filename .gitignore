@@ -6,6 +6,10 @@ data/backups/*.sqlite
 data/cache/
 data/uploads/
 .env.runtime
+.env.kis
+.env.kis.*
+!.env.kis.example
 .access_info
 trading_data.zip
 runtime_bundle*.zip
+data/cache/kis_*

@@ -98,6 +98,8 @@ class Event(SQLModel, table=True):
 
     realized_pnl: Optional[float] = Field(default=None)
     realized_pnl_local: Optional[float] = Field(default=None)
+    source_broker: Optional[str] = Field(default=None, max_length=20, index=True)
+    external_execution_id: Optional[str] = Field(default=None, max_length=160, index=True)
 
 
 class SellAllocation(SQLModel, table=True):
@@ -112,3 +114,53 @@ class Setting(SQLModel, table=True):
     base_currency: str = Field(default="KRW", max_length=10)
     risk_denominator: str = Field(default="BOOK_ASSET", max_length=50)
     est_exit_fee_rate: float = Field(default=0, ge=0)
+
+
+class BrokerExecution(SQLModel, table=True):
+    execution_key: str = Field(primary_key=True, max_length=64)
+    broker: str = Field(default="KIS", max_length=20, index=True)
+    account_hash: str = Field(max_length=32, index=True)
+    environment: str = Field(default="paper", max_length=16)
+    trade_date: date = Field(index=True)
+    order_no: str = Field(max_length=40, index=True)
+    ticker: str = Field(max_length=20, index=True)
+    symbol_name: Optional[str] = Field(default=None, max_length=200)
+    side: str = Field(max_length=8)
+    market: str = Field(max_length=16)
+    exchange: str = Field(max_length=32)
+    currency: str = Field(max_length=10)
+    executed_at: datetime
+    observed_qty: float = Field(default=0, ge=0)
+    observed_avg_price: float = Field(default=0, ge=0)
+    observed_fee: float = Field(default=0, ge=0)
+    observed_tax: float = Field(default=0, ge=0)
+    applied_qty: float = Field(default=0, ge=0)
+    applied_notional: float = Field(default=0, ge=0)
+    applied_fee: float = Field(default=0, ge=0)
+    applied_tax: float = Field(default=0, ge=0)
+    processing_status: str = Field(default="observed", max_length=40, index=True)
+    last_error: Optional[str] = Field(default=None)
+    event_ids_json: Optional[str] = Field(default=None)
+    raw_payload_json: str = Field(default="{}")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class BrokerSyncState(SQLModel, table=True):
+    id: int = Field(default=1, primary_key=True)
+    broker: str = Field(default="KIS", max_length=20)
+    environment: str = Field(default="paper", max_length=16)
+    paused: bool = Field(default=False)
+    websocket_status: str = Field(default="disabled", max_length=32)
+    rest_status: str = Field(default="idle", max_length=32)
+    last_started_at: Optional[datetime] = Field(default=None)
+    last_success_at: Optional[datetime] = Field(default=None)
+    last_error_at: Optional[datetime] = Field(default=None)
+    last_error: Optional[str] = Field(default=None)
+    last_query_start: Optional[date] = Field(default=None)
+    last_query_end: Optional[date] = Field(default=None)
+    token_status: str = Field(default="not_requested", max_length=32)
+    new_count: int = Field(default=0, ge=0)
+    duplicate_count: int = Field(default=0, ge=0)
+    pending_count: int = Field(default=0, ge=0)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)

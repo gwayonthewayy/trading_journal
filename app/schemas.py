@@ -164,3 +164,7 @@ class PortfolioRowOut(BaseModel):
     open_risk: float
     open_risk_pct: float
     lots: list[PortfolioLotOut]
+
+
+class BrokerPendingAllocationRequest(BaseModel):
+    allocations: list[SellAllocationIn] = Field(min_length=1)

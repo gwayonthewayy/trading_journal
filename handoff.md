@@ -5,7 +5,7 @@ This file is the working handoff for Codex, Google Antigravity, and any other ma
 ## Project
 
 - App: personal trading journal, portfolio, and stats web app
-- Stack: Python 3.12, FastAPI, SQLModel, SQLite, Jinja2
+- Stack: Python 3.11+, FastAPI, SQLModel, SQLite, Jinja2
 - Main local repo: `D:\주식\trading_journal`
 - Friend server repo: `/opt/gyu/trading_journal`
 - GitHub remote: `https://github.com/gwayonthewayy/trading_journal.git`
@@ -170,3 +170,13 @@ Then inspect only the files relevant to the requested task.
 
 Before editing, make the pre-work backup commit if there are local changes. After editing and verification, make the post-work commit and push.
 
+# KIS read-only synchronization
+
+The KIS integration architecture, staged rollout, service installation, domain connection, backup, and rollback procedures are documented in `docs/KIS_SYNC_RUNBOOK.md`. The non-negotiable safety boundary is read-only execution collection: do not add KIS order endpoints to this service. `KIS_ORDER_ENABLED` must remain `false`.
+
+Before and after every server or feature change:
+
+1. Check `git status` and create a checkpoint commit containing code only.
+2. Back up the server DB and uploads outside Git.
+3. Work on a feature branch and run the full test suite.
+4. Commit the verified result before merging to `main`.

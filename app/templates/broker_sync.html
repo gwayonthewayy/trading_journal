@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+
+{% block page_header %}
+<section class="page-heading">
+  <div>
+    <p class="eyebrow">BROKER CONNECTION</p>
+    <h1>KIS Read-only Sync</h1>
+    <p>WebSocket은 감지 전용이며 Journal 반영은 REST 체결 재조회로 확정합니다.</p>
+  </div>
+  <span class="sync-env sync-env-{{ status.environment }}">{{ status.environment|upper }}</span>
+</section>
+{% endblock %}
+
+{% block content %}
+<section class="metrics-grid sync-metrics">
+  <article class="metric-card"><span>Configured</span><strong>{{ "YES" if status.configured else "NO" }}</strong></article>
+  <article class="metric-card"><span>REST</span><strong>{{ status.rest_status|upper }}</strong></article>
+  <article class="metric-card"><span>Last Success</span><strong>{{ status.last_success_at or "-" }}</strong></article>
+  <article class="metric-card"><span>Pending SELL</span><strong>{{ status.pending_count }}</strong></article>
+</section>
+
+<section class="card sync-control-card">
+  <div>
+    <h2>Automatic Journal Write</h2>
+    <p class="small">Sync {{ "enabled" if status.sync_enabled else "disabled" }} / Write {{ "enabled" if status.write_events else "shadow mode" }} / Orders permanently disabled</p>
+    {% if status.last_error %}<p class="sync-error">{{ status.last_error }}</p>{% endif %}
+  </div>
+  <div class="sync-actions">
+    <button type="button" id="sync-now" {% if not status.sync_enabled or status.paused %}disabled{% endif %}>지금 동기화</button>
+    <button type="button" id="sync-pause" class="secondary">{{ "재개" if status.paused else "일시정지" }}</button>
+  </div>
+</section>
+
+<section class="card">
+  <div class="section-title-row"><h2>Pending Allocation</h2><span>{{ status.pending_count }} execution(s)</span></div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Time</th><th>Ticker</th><th>Name</th><th>Market</th><th>Qty</th><th>Price</th><th>BUY lot allocations</th></tr></thead>
+      <tbody>
+      {% for item in status.pending %}
+        <tr>
+          <td>{{ item.executed_at }}</td><td>{{ item.ticker }}</td><td>{{ item.symbol_name or "-" }}</td>
+          <td>{{ item.market }}</td><td>{{ item.qty }}</td><td>{{ item.price }}</td>
+          <td>
+            <div class="eligible-lots">
+              {% for lot in item.eligible_lots %}
+                <span>#{{ lot.lot_id }} · {{ lot.qty_open }}주 · {{ lot.entry_price }}</span>
+              {% else %}
+                <span>열린 BUY lot 없음</span>
+              {% endfor %}
+            </div>
+            <form class="allocation-form" data-key="{{ item.execution_key }}">
+              <input name="allocations" placeholder="예: 12:3, 18:2" aria-label="lot id and quantity" />
+              <button type="submit">연결</button>
+            </form>
+          </td>
+        </tr>
+      {% else %}
+        <tr><td colspan="7">보류 중인 SELL이 없습니다.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  async function callApi(url, options = {}) {
+    const response = await fetch(url, { ...options, headers: {"Content-Type": "application/json", ...(options.headers || {})} });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.detail || "Request failed");
+    return data;
+  }
+  document.getElementById("sync-now")?.addEventListener("click", async (event) => {
+    event.currentTarget.disabled = true;
+    try { await callApi("/api/broker-sync/run", {method: "POST"}); location.reload(); }
+    catch (error) { alert(error.message); event.currentTarget.disabled = false; }
+  });
+  document.getElementById("sync-pause")?.addEventListener("click", async () => {
+    try { await callApi("/api/broker-sync/pause?paused={{ 'false' if status.paused else 'true' }}", {method: "POST"}); location.reload(); }
+    catch (error) { alert(error.message); }
+  });
+  document.querySelectorAll(".allocation-form").forEach((form) => form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    try {
+      const allocations = form.elements.allocations.value.split(",").filter(Boolean).map((part) => {
+        const [lot_id, qty_sold] = part.trim().split(":");
+        return {lot_id: Number(lot_id), qty_sold: Number(qty_sold)};
+      });
+      await callApi(`/api/broker-sync/pending/${form.dataset.key}/allocate`, {method: "POST", body: JSON.stringify({allocations})});
+      location.reload();
+    } catch (error) { alert(error.message); }
+  }));
+</script>
+{% endblock %}

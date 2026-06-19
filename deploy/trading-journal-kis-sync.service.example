@@ -1,0 +1,20 @@
+[Unit]
+Description=Trading Journal KIS read-only execution synchronizer
+After=network-online.target trading-journal.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=gyu123
+Group=gyuedit
+WorkingDirectory=/opt/gyu/trading_journal
+EnvironmentFile=/opt/gyu/trading_journal/.env.runtime
+EnvironmentFile=/opt/gyu/trading_journal/.env.kis
+ExecStart=/usr/bin/python3 scripts/kis_sync_worker.py
+Restart=always
+RestartSec=10
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

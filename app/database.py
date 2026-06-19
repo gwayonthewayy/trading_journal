@@ -50,6 +50,8 @@ def ensure_compat_schema_columns() -> None:
             "fx_rate_to_base": "REAL NOT NULL DEFAULT 1.0",
             "realized_pnl_local": "REAL",
             "image_url": "TEXT",
+            "source_broker": "TEXT",
+            "external_execution_id": "TEXT",
         },
         "tradegroup": {
             "setup_type": "TEXT",
@@ -85,13 +87,16 @@ def ensure_compat_schema_columns() -> None:
 
 
 def ensure_settings_row() -> None:
-    from app.models import Setting
+    from app.models import BrokerSyncState, Setting
 
     with Session(engine) as session:
         row = session.get(Setting, 1)
         if row is None:
             session.add(Setting(id=1))
-            session.commit()
+        sync_row = session.get(BrokerSyncState, 1)
+        if sync_row is None:
+            session.add(BrokerSyncState(id=1))
+        session.commit()
 
 
 def get_session() -> Generator[Session, None, None]:

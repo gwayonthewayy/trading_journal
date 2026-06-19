@@ -11,7 +11,16 @@ from sqlmodel import Session
 
 from app.config import SecuritySettings, load_security_settings
 from app.database import get_session, init_db
+from app.kis_config import KisSettings, load_kis_settings
+from app.kis_sync import (
+    allocate_pending_execution,
+    broker_sync_status,
+    record_sync_error,
+    run_rest_reconciliation,
+    set_sync_paused,
+)
 from app.schemas import (
+    BrokerPendingAllocationRequest,
     BuyRequest,
     CashflowRequest,
     DuplicateCheckRequest,
@@ -60,6 +69,7 @@ from app.services import (
 )
 
 security_settings: SecuritySettings = load_security_settings()
+kis_settings: KisSettings = load_kis_settings()
 
 app = FastAPI(
     title="Trade Journal & Portfolio",
@@ -467,6 +477,81 @@ async def api_upload_image(
     content = await file.read()
     image_url = save_uploaded_image(content=content, content_type=file.content_type)
     return {"ok": True, "image_url": image_url}
+
+
+@app.get("/api/broker-sync/status")
+def api_broker_sync_status(
+    _auth: str = Depends(admin_api_guard),
+    session: Session = Depends(get_session),
+) -> dict:
+    return broker_sync_status(session, kis_settings)
+
+
+@app.post("/api/broker-sync/run")
+def api_broker_sync_run(
+    _auth: str = Depends(admin_api_guard),
+    session: Session = Depends(get_session),
+) -> dict:
+    try:
+        summary = run_rest_reconciliation(session, kis_settings)
+        backup_path = _commit_with_backup(session) if summary.created else None
+        if not summary.created:
+            session.commit()
+        return {"ok": True, **summary.__dict__, "backup": backup_path}
+    except RuntimeError as exc:
+        session.rollback()
+        record_sync_error(session, exc)
+        session.commit()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except Exception as exc:
+        session.rollback()
+        record_sync_error(session, exc)
+        session.commit()
+        raise HTTPException(status_code=502, detail=f"KIS synchronization failed: {type(exc).__name__}") from exc
+
+
+@app.post("/api/broker-sync/pause")
+def api_broker_sync_pause(
+    paused: bool = Query(...),
+    _auth: str = Depends(admin_api_guard),
+    session: Session = Depends(get_session),
+) -> dict:
+    state = set_sync_paused(session, paused)
+    session.commit()
+    return {"ok": True, "paused": state.paused}
+
+
+@app.post("/api/broker-sync/pending/{execution_key}/allocate")
+def api_broker_sync_allocate(
+    execution_key: str,
+    payload: BrokerPendingAllocationRequest,
+    _auth: str = Depends(admin_api_guard),
+    session: Session = Depends(get_session),
+) -> dict:
+    try:
+        result = allocate_pending_execution(session, execution_key, payload.allocations)
+        backup_path = _commit_with_backup(session)
+        return {"ok": True, **result.__dict__, "backup": backup_path}
+    except ValueError as exc:
+        session.rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except HTTPException:
+        session.rollback()
+        raise
+
+
+@app.get("/broker-sync", response_class=HTMLResponse)
+def page_broker_sync(
+    request: Request,
+    session: Session = Depends(get_session),
+) -> HTMLResponse:
+    role = _require_viewer_page_role(request)
+    if role != "admin":
+        return RedirectResponse(url="/access", status_code=303)
+    return templates.TemplateResponse(
+        "broker_sync.html",
+        {"request": request, **_template_auth_context(request), "status": broker_sync_status(session, kis_settings)},
+    )
 
 
 @app.get("/journal", response_class=HTMLResponse)

@@ -7,6 +7,21 @@
 {% endblock %}
 
 {% block content %}
+<div id="js-error-console" style="display:none; background:#fee2e2; border:1px solid #ef4444; color:#991b1b; padding:12px; margin:16px 0; border-radius:6px; font-family:monospace; font-size:0.9rem; z-index:9999; position:relative;">
+  <strong>[Antigravity Debug] JavaScript Error Detected:</strong>
+  <pre id="js-error-msg" style="margin:8px 0 0 0; white-space:pre-wrap; font-family:monospace;"></pre>
+</div>
+<script>
+  window.addEventListener('error', function(e) {
+    const consoleDiv = document.getElementById('js-error-console');
+    const msgPre = document.getElementById('js-error-msg');
+    if (consoleDiv && msgPre) {
+      consoleDiv.style.display = 'block';
+      msgPre.textContent += `\nMessage: ${e.message}\nSource: ${e.filename}:${e.lineno}:${e.colno}\nStack: ${e.error ? e.error.stack : 'N/A'}\n`;
+    }
+  });
+</script>
+
 <div class="grid">
   <section class="card">
     <div class="card-head">

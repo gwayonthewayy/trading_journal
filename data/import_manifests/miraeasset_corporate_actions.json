@@ -1,0 +1,13 @@
+{
+  "actions": [
+    {
+      "source_tag": "komico_bonus_20260527",
+      "action_type": "BONUS_ISSUE",
+      "ticker": "183300",
+      "target_buy_row": 57,
+      "effective_ts": "2026-06-15T00:00:00",
+      "additional_qty": 52,
+      "note": "Komico 1:1 bonus issue; record_date=2026-05-27; listing_date=2026-06-15"
+    }
+  ]
+}

@@ -2916,7 +2916,13 @@ def _fetch_latest_quote_from_yfinance_symbol(symbol: str) -> float | None:
         "?range=5d&interval=1d&includePrePost=false&events=div%2Csplits"
     )
     try:
-        with urlopen(yahoo_url, timeout=8) as response:
+        req = Request(
+            yahoo_url,
+            headers={
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            },
+        )
+        with urlopen(req, timeout=8) as response:
             payload = json.loads(response.read().decode("utf-8"))
         chart = payload.get("chart") if isinstance(payload, dict) else None
         results = chart.get("result") if isinstance(chart, dict) else None

@@ -586,23 +586,28 @@
     return sortedVals[lo] * (1 - w) + sortedVals[hi] * w;
   }
 
-  function renderDistributionChart(rowsByGranularity, mode) {
+  // Active ApexCharts Map
+  const activeCharts = {};
+
+  function renderDistributionChart(datasets, mode) {
     const holder = document.getElementById("chart-distribution");
     const summary = document.getElementById("dist-summary");
-    const granularityEl = document.getElementById("dist-granularity");
-    const methodEl = document.getElementById("dist-method");
-    if (!holder || !summary || !granularityEl || !methodEl) return;
+    if (!holder || !summary) return;
 
-    const granularity = granularityEl.value;
-    const methodKey = methodEl.value;
-    const metricLabel = methodKey === "return_method2_pct" ? "Method 2" : "Method 1";
-    const sourceRows = rowsByGranularity[granularity] || [];
+    if (activeCharts["chart-distribution"]) {
+      activeCharts["chart-distribution"].destroy();
+      delete activeCharts["chart-distribution"];
+    }
+
+    const granularity = distGranularity?.value || "weekly";
+    const metricKey = distMethod?.value || "return_method2_pct";
+    const sourceRows = datasets[granularity] || [];
     const ordered = [...sourceRows].reverse();
     const chartRows = buildRowsByMode(ordered, mode);
 
     const values = [];
     for (const row of chartRows) {
-      const v = safeNum(row[methodKey]);
+      const v = safeNum(row[metricKey]);
       if (v !== null) values.push(v);
     }
 
@@ -629,12 +634,6 @@
       binCount = 1;
     }
 
-    const width = 920;
-    const height = 300;
-    const margin = { top: 24, right: 18, bottom: 52, left: 52 };
-    const plotW = width - margin.left - margin.right;
-    const plotH = height - margin.top - margin.bottom;
-
     const bins = Array.from({ length: binCount }, (_, i) => ({
       idx: i,
       low: minV + ((maxV - minV) * i) / binCount,
@@ -655,65 +654,68 @@
       }
     }
 
-    const maxCount = Math.max(...bins.map((b) => b.count), 1);
-    const barGap = 4;
-    const barW = Math.max(3, (plotW / binCount) - barGap);
-    const x = (i) => margin.left + i * (plotW / binCount) + (barGap / 2);
-    const y = (count) => margin.top + ((maxCount - count) / maxCount) * plotH;
+    const categories = bins.map(b => `${b.low.toFixed(1)}% ~ ${b.high.toFixed(1)}%`);
+    const counts = bins.map(b => b.count);
 
-    let svg = '';
-    svg += `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Return distribution histogram">`;
-    svg += `<rect x="0" y="0" width="${width}" height="${height}" fill="#fffdfa" />`;
-    for (let i = 0; i <= 4; i++) {
-      const c = Math.round((maxCount * i) / 4);
-      const py = y(c);
-      svg += `<line x1="${margin.left}" y1="${py}" x2="${margin.left + plotW}" y2="${py}" stroke="#ddd3c4" stroke-width="1" />`;
-      svg += `<text x="${margin.left - 8}" y="${py + 4}" text-anchor="end" font-size="11" fill="#6f6658">${c}</text>`;
-    }
-    svg += `<line x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${margin.top + plotH}" stroke="#b8ac99" stroke-width="1.2" />`;
-    svg += `<line x1="${margin.left}" y1="${margin.top + plotH}" x2="${margin.left + plotW}" y2="${margin.top + plotH}" stroke="#b8ac99" stroke-width="1.2" />`;
+    const isDark = document.documentElement.getAttribute("data-theme") === "dark";
+    const textThemeColor = isDark ? "#94a3b8" : "#64748b";
+    const gridThemeColor = isDark ? "#334155" : "#e2e8f0";
 
-    bins.forEach((b, i) => {
-      const px = x(i);
-      const py = y(b.count);
-      const h = margin.top + plotH - py;
-      const rate = ((b.count / n) * 100).toFixed(1);
-      const tip = `${b.low.toFixed(2)}% ~ ${b.high.toFixed(2)}% | ${b.count} (${rate}%)`;
-      svg += `<rect class="chart-hover-node" x="${px}" y="${py}" width="${barW}" height="${h}" fill="#215561" data-tip="${escapeXml(tip)}"><title>${escapeXml(tip)}</title></rect>`;
-    });
+    const options = {
+      series: [
+        {
+          name: 'Count',
+          data: counts
+        }
+      ],
+      chart: {
+        type: 'bar',
+        height: 300,
+        toolbar: { show: false },
+        background: 'transparent'
+      },
+      colors: ['#215561'],
+      plotOptions: {
+        bar: {
+          borderRadius: 4,
+          columnWidth: '70%'
+        }
+      },
+      grid: {
+        borderColor: gridThemeColor,
+        strokeDashArray: 4
+      },
+      theme: {
+        mode: isDark ? 'dark' : 'light'
+      },
+      xaxis: {
+        categories: categories,
+        labels: {
+          style: { colors: textThemeColor, fontSize: '9px' }
+        },
+        axisBorder: { show: false },
+        axisTicks: { show: false }
+      },
+      yaxis: {
+        labels: {
+          style: { colors: textThemeColor }
+        }
+      },
+      tooltip: {
+        theme: isDark ? 'dark' : 'light',
+        y: {
+          formatter: (v) => `${v} trades (${((v / n) * 100).toFixed(1)}%)`
+        }
+      }
+    };
 
-    const tickIndices = [0, Math.floor((binCount - 1) / 2), binCount - 1];
-    const seenTicks = new Set();
-    for (const idx of tickIndices) {
-      if (idx < 0 || idx >= binCount || seenTicks.has(idx)) continue;
-      seenTicks.add(idx);
-      const b = bins[idx];
-      const px = x(idx) + (barW / 2);
-      svg += `<line x1="${px}" y1="${margin.top + plotH}" x2="${px}" y2="${margin.top + plotH + 5}" stroke="#8e816c" stroke-width="1" />`;
-      svg += `<text x="${px}" y="${margin.top + plotH + 18}" text-anchor="middle" font-size="10" fill="#6f6658">${b.low.toFixed(1)}%</text>`;
-    }
-    svg += `<text x="${margin.left}" y="14" font-size="12" fill="#1d1a16">${modeLabel(mode)} ${granularity} ${metricLabel} Distribution</text>`;
-    svg += '</svg>';
-    holder.innerHTML = svg;
-    attachHoverTooltip(holder);
+    const chart = new ApexCharts(holder, options);
+    chart.render();
+    activeCharts["chart-distribution"] = chart;
 
     const mean = values.reduce((acc, v) => acc + v, 0) / n;
     const median = percentile(sorted, 0.5);
     summary.textContent = `N=${n} | Mean=${mean.toFixed(2)}% | Median=${(median ?? 0).toFixed(2)}% | Min=${minV.toFixed(2)}% | Max=${maxV.toFixed(2)}%`;
-  }
-
-  function smoothCurvePath(points) {
-    if (!points.length) return "";
-    if (points.length === 1) return `M ${points[0].x} ${points[0].y}`;
-    let d = `M ${points[0].x} ${points[0].y}`;
-    for (let i = 1; i < points.length - 1; i++) {
-      const xc = (points[i].x + points[i + 1].x) / 2;
-      const yc = (points[i].y + points[i + 1].y) / 2;
-      d += ` Q ${points[i].x} ${points[i].y} ${xc} ${yc}`;
-    }
-    const lastIdx = points.length - 1;
-    d += ` Q ${points[lastIdx - 1].x} ${points[lastIdx - 1].y} ${points[lastIdx].x} ${points[lastIdx].y}`;
-    return d;
   }
 
   function renderClosedTradeHistogram({
@@ -730,6 +732,11 @@
     const holder = document.getElementById(holderId);
     const summary = document.getElementById(summaryId);
     if (!holder || !summary) return;
+
+    if (activeCharts[holderId]) {
+      activeCharts[holderId].destroy();
+      delete activeCharts[holderId];
+    }
 
     const values = (rows || [])
       .map((row) => safeNum(row[valueKey]))
@@ -781,77 +788,74 @@
       return weightSum > 0 ? weighted / weightSum : counts[idx];
     });
 
-    const maxCount = Math.max(...counts, 1);
-    const maxSmoothCount = Math.max(...smoothedCounts, 1);
-    const axisMax = Math.max(maxCount, maxSmoothCount);
+    const categories = bins.map(b => rangeFormatter(b.low, b.high));
+    const isDark = document.documentElement.getAttribute("data-theme") === "dark";
+    const textThemeColor = isDark ? "#94a3b8" : "#64748b";
+    const gridThemeColor = isDark ? "#334155" : "#e2e8f0";
 
-    const width = 920;
-    const height = 320;
-    const margin = { top: 24, right: 18, bottom: 56, left: 58 };
-    const plotW = width - margin.left - margin.right;
-    const plotH = height - margin.top - margin.bottom;
-    const step = plotW / binCount;
-    const barW = Math.max(4, step - 4);
-    const x = (idx) => margin.left + idx * step + (step - barW) / 2;
-    const y = (count) => margin.top + ((axisMax - count) / axisMax) * plotH;
-
-    let svg = "";
-    svg += `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeXml(ariaLabel)}">`;
-    svg += `<rect x="0" y="0" width="${width}" height="${height}" fill="#fffdfa" />`;
-    for (let i = 0; i <= 4; i++) {
-      const c = Math.round((axisMax * i) / 4);
-      const py = y(c);
-      svg += `<line x1="${margin.left}" y1="${py}" x2="${margin.left + plotW}" y2="${py}" stroke="#ddd3c4" stroke-width="1" />`;
-      svg += `<text x="${margin.left - 8}" y="${py + 4}" text-anchor="end" font-size="11" fill="#6f6658">${c}</text>`;
-    }
-    svg += `<line x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${margin.top + plotH}" stroke="#b8ac99" stroke-width="1.2" />`;
-    svg += `<line x1="${margin.left}" y1="${margin.top + plotH}" x2="${margin.left + plotW}" y2="${margin.top + plotH}" stroke="#b8ac99" stroke-width="1.2" />`;
-
-    if (minV <= 0 && maxV >= 0) {
-      const zeroX = margin.left + ((0 - minV) / (maxV - minV)) * plotW;
-      svg += `<line x1="${zeroX}" y1="${margin.top}" x2="${zeroX}" y2="${margin.top + plotH}" stroke="#7f7669" stroke-width="1.1" stroke-dasharray="3 3" />`;
-    }
-
-    bins.forEach((bin, idx) => {
-      const px = x(idx);
-      const py = y(bin.count);
-      const h = margin.top + plotH - py;
-      const ratio = ((bin.count / n) * 100).toFixed(1);
-      const tip = `${rangeFormatter(bin.low, bin.high)} | ${bin.count} trades (${ratio}%)`;
-      svg += `<rect class="chart-hover-node" x="${px}" y="${py}" width="${barW}" height="${h}" fill="#215561" data-tip="${escapeXml(tip)}"><title>${escapeXml(tip)}</title></rect>`;
-    });
-
-    const curvePoints = smoothedCounts.map((count, idx) => ({
-      x: x(idx) + barW / 2,
-      y: y(count),
-    }));
-    const curvePath = smoothCurvePath(curvePoints);
-    if (curvePath) {
-      svg += `<path d="${curvePath}" fill="none" stroke="#b34a2f" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" />`;
-      for (const point of curvePoints) {
-        svg += `<circle cx="${point.x}" cy="${point.y}" r="2.1" fill="#b34a2f" />`;
+    const options = {
+      series: [
+        {
+          name: 'Histogram',
+          type: 'bar',
+          data: counts
+        },
+        {
+          name: 'Smoothed',
+          type: 'line',
+          data: smoothedCounts
+        }
+      ],
+      chart: {
+        height: 320,
+        type: 'line',
+        toolbar: { show: false },
+        background: 'transparent'
+      },
+      colors: ['#215561', '#f97316'],
+      stroke: {
+        width: [0, 2.5],
+        curve: 'smooth'
+      },
+      plotOptions: {
+        bar: {
+          borderRadius: 3,
+          columnWidth: '75%'
+        }
+      },
+      grid: {
+        borderColor: gridThemeColor,
+        strokeDashArray: 4
+      },
+      theme: {
+        mode: isDark ? 'dark' : 'light'
+      },
+      xaxis: {
+        categories: categories,
+        labels: {
+          style: { colors: textThemeColor, fontSize: '9px' }
+        },
+        axisBorder: { show: false },
+        axisTicks: { show: false }
+      },
+      yaxis: {
+        labels: {
+          style: { colors: textThemeColor }
+        }
+      },
+      tooltip: {
+        theme: isDark ? 'dark' : 'light',
+        shared: true,
+        intersect: false
+      },
+      legend: {
+        labels: { colors: isDark ? '#f1f5f9' : '#1e293b' }
       }
-    }
+    };
 
-    const tickIndices = [0, Math.floor((binCount - 1) / 2), binCount - 1];
-    const drawnTicks = new Set();
-    for (const idx of tickIndices) {
-      if (idx < 0 || idx >= bins.length || drawnTicks.has(idx)) continue;
-      drawnTicks.add(idx);
-      const bin = bins[idx];
-      const px = x(idx) + barW / 2;
-      svg += `<line x1="${px}" y1="${margin.top + plotH}" x2="${px}" y2="${margin.top + plotH + 5}" stroke="#8e816c" stroke-width="1" />`;
-      svg += `<text x="${px}" y="${margin.top + plotH + 18}" text-anchor="middle" font-size="10" fill="#6f6658">${valueFormatter(bin.low, 0)}</text>`;
-    }
-
-    svg += `<text x="${margin.left}" y="14" font-size="12" fill="#1d1a16">${escapeXml(title)}</text>`;
-    svg += `<circle cx="${width - 214}" cy="14" r="4" fill="#215561"></circle>`;
-    svg += `<text x="${width - 204}" y="18" font-size="11" fill="#1d1a16">Histogram</text>`;
-    svg += `<circle cx="${width - 122}" cy="14" r="4" fill="#b34a2f"></circle>`;
-    svg += `<text x="${width - 112}" y="18" font-size="11" fill="#1d1a16">Smoothed</text>`;
-    svg += "</svg>";
-    holder.innerHTML = svg;
-    attachHoverTooltip(holder);
+    const chart = new ApexCharts(holder, options);
+    chart.render();
+    activeCharts[holderId] = chart;
 
     const mean = values.reduce((acc, value) => acc + value, 0) / n;
     const median = percentile(sorted, 0.5);
@@ -889,66 +893,14 @@
     });
   }
 
-  function attachHoverTooltip(holder) {
-    if (!holder) return;
-    holder.classList.add("has-hover-tip");
-    let tip = holder.querySelector(".chart-hover-tip");
-    if (!tip) {
-      tip = document.createElement("div");
-      tip.className = "chart-hover-tip";
-      tip.hidden = true;
-      holder.appendChild(tip);
-    }
-
-    if (holder.dataset.tooltipBound === "1") return;
-    holder.dataset.tooltipBound = "1";
-
-    function hideTip() {
-      const currentTip = holder.querySelector(".chart-hover-tip");
-      if (currentTip) currentTip.hidden = true;
-    }
-
-    function moveTip(evt) {
-      const currentTip = holder.querySelector(".chart-hover-tip");
-      if (!currentTip) return;
-      const target = evt.target && evt.target.closest ? evt.target.closest(".chart-hover-node") : null;
-      if (!target || !holder.contains(target)) {
-        hideTip();
-        return;
-      }
-      const text = target.getAttribute("data-tip");
-      if (!text) {
-        hideTip();
-        return;
-      }
-      currentTip.textContent = text;
-      currentTip.hidden = false;
-
-      const holderRect = holder.getBoundingClientRect();
-      const localX = evt.clientX - holderRect.left;
-      const localY = evt.clientY - holderRect.top;
-      const offset = 12;
-      const tipW = currentTip.offsetWidth || 0;
-      const tipH = currentTip.offsetHeight || 0;
-
-      let left = localX + offset;
-      let top = localY - (tipH + offset);
-      if (left + tipW + 6 > holder.clientWidth) left = Math.max(6, localX - tipW - offset);
-      if (top < 6) top = localY + offset;
-      if (top + tipH > holder.clientHeight - 6) top = holder.clientHeight - tipH - 6;
-
-      currentTip.style.left = `${Math.max(6, left)}px`;
-      currentTip.style.top = `${Math.max(6, top)}px`;
-    }
-
-    holder.addEventListener("mousemove", moveTip);
-    holder.addEventListener("mouseleave", hideTip);
-    holder.addEventListener("scroll", hideTip);
-  }
-
   function renderReturnChart(targetId, rows, title, benchmarkSymbol, mode) {
     const holder = document.getElementById(targetId);
     if (!holder) return;
+
+    if (activeCharts[targetId]) {
+      activeCharts[targetId].destroy();
+      delete activeCharts[targetId];
+    }
 
     const ordered = [...rows].reverse();
     const chartRows = buildRowsByMode(ordered, mode);
@@ -957,97 +909,91 @@
       return;
     }
 
-    const width = 920;
-    const height = 320;
-    const margin = { top: 20, right: 24, bottom: 56, left: 58 };
-    const plotW = width - margin.left - margin.right;
-    const plotH = height - margin.top - margin.bottom;
+    const categories = chartRows.map(r => r.period_key);
+    const m1Data = chartRows.map(r => safeNum(r.return_method1_pct));
+    const m2Data = chartRows.map(r => safeNum(r.return_method2_pct));
+    const bmData = chartRows.map(r => safeNum(r.benchmark_plot_return_pct));
 
-    const allValues = [];
-    for (const row of chartRows) {
-      const m1 = safeNum(row.return_method1_pct);
-      const m2 = safeNum(row.return_method2_pct);
-      const bm = safeNum(row.benchmark_plot_return_pct);
-      if (m1 !== null) allValues.push(m1);
-      if (m2 !== null) allValues.push(m2);
-      if (bm !== null) allValues.push(bm);
-    }
-    if (!allValues.length) {
-      holder.innerHTML = '<div class="small">No valid return data</div>';
-      return;
-    }
+    const isDark = document.documentElement.getAttribute("data-theme") === "dark";
+    const textThemeColor = isDark ? "#94a3b8" : "#64748b";
+    const gridThemeColor = isDark ? "#334155" : "#e2e8f0";
 
-    let minV = Math.min(...allValues, 0);
-    let maxV = Math.max(...allValues, 0);
-    if (Math.abs(maxV - minV) < 1e-9) {
-      maxV += 1;
-      minV -= 1;
-    }
-
-    const x = (i) => {
-      if (ordered.length === 1) return margin.left + plotW / 2;
-      return margin.left + (i / (ordered.length - 1)) * plotW;
+    const options = {
+      series: [
+        {
+          name: mode === "cumulative" ? "단순 누적" : "단순 수익률",
+          data: m1Data
+        },
+        {
+          name: mode === "cumulative" ? "시간가중 누적" : "시간가중 수익률",
+          data: m2Data
+        },
+        {
+          name: benchmarkSymbol || "Benchmark",
+          data: bmData
+        }
+      ],
+      chart: {
+        type: 'area',
+        height: 320,
+        toolbar: { show: false },
+        zoom: { enabled: false },
+        background: 'transparent'
+      },
+      colors: ['#f97316', '#38bdf8', '#10b981'],
+      fill: {
+        type: 'gradient',
+        gradient: {
+          shadeIntensity: 1,
+          opacityFrom: isDark ? 0.35 : 0.15,
+          opacityTo: 0.0,
+          stops: [0, 90, 100]
+        }
+      },
+      stroke: {
+        curve: 'smooth',
+        width: [2.5, 2.5, 2.0],
+        dashArray: [0, 0, 4]
+      },
+      grid: {
+        borderColor: gridThemeColor,
+        strokeDashArray: 4,
+        padding: { right: 20, left: 10 }
+      },
+      theme: {
+        mode: isDark ? 'dark' : 'light'
+      },
+      xaxis: {
+        categories: categories,
+        labels: {
+          style: { colors: textThemeColor, fontSize: '10px' }
+        },
+        axisBorder: { show: false },
+        axisTicks: { show: false }
+      },
+      yaxis: {
+        labels: {
+          formatter: (v) => v !== null && v !== undefined ? v.toFixed(2) + '%' : '',
+          style: { colors: textThemeColor }
+        }
+      },
+      tooltip: {
+        theme: isDark ? 'dark' : 'light',
+        x: { show: true },
+        y: {
+          formatter: (v) => v !== null && v !== undefined ? v.toFixed(2) + '%' : ''
+        }
+      },
+      legend: {
+        position: 'top',
+        horizontalAlign: 'right',
+        labels: { colors: isDark ? '#f1f5f9' : '#1e293b' }
+      }
     };
-    const y = (v) => margin.top + ((maxV - v) / (maxV - minV)) * plotH;
 
-    let svg = '';
-    svg += `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${title}">`;
-    svg += `<rect x="0" y="0" width="${width}" height="${height}" fill="#fffdfa" />`;
-
-    for (let i = 0; i <= 4; i++) {
-      const value = minV + ((maxV - minV) * i) / 4;
-      const py = y(value);
-      svg += `<line x1="${margin.left}" y1="${py}" x2="${margin.left + plotW}" y2="${py}" stroke="#ddd3c4" stroke-width="1" />`;
-      svg += `<text x="${margin.left - 8}" y="${py + 4}" text-anchor="end" font-size="11" fill="#6f6658">${value.toFixed(2)}%</text>`;
-    }
-
-    svg += `<line x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${margin.top + plotH}" stroke="#b8ac99" stroke-width="1.2" />`;
-    svg += `<line x1="${margin.left}" y1="${margin.top + plotH}" x2="${margin.left + plotW}" y2="${margin.top + plotH}" stroke="#b8ac99" stroke-width="1.2" />`;
-
-    const m1Label = mode === "cumulative" ? "단순 누적 수익률" : "단순 수익률";
-    const m2Label = mode === "cumulative" ? "시간가중 누적 수익률" : "시간가중 수익률";
-    const bmLabel = mode === "cumulative"
-      ? `${benchmarkSymbol || "Benchmark"} 누적 수익률`
-      : (benchmarkSymbol || "Benchmark");
-    const m1LegendLabel = mode === "cumulative" ? "단순 누적" : "단순 수익률";
-    const m2LegendLabel = mode === "cumulative" ? "시간가중 누적" : "시간가중 수익률";
-    const bmLegendLabel = mode === "cumulative"
-      ? `${benchmarkSymbol || "Benchmark"} cum`
-      : (benchmarkSymbol || "Benchmark");
-    const m1Points = collectSeriesPoints(chartRows, "return_method1_pct", x, y, m1Label);
-    const m2Points = collectSeriesPoints(chartRows, "return_method2_pct", x, y, m2Label);
-    const bmPoints = collectSeriesPoints(chartRows, "benchmark_plot_return_pct", x, y, bmLabel);
-
-    // Draw M2 first so M1 stays visible even when the two lines overlap exactly.
-    svg += drawSeriesSvg(m2Points, "#215561", 2.0, "6 4");
-    svg += drawSeriesSvg(m1Points, "#b34a2f", 2.4);
-    svg += drawSeriesSvg(bmPoints, "#4e7a1e", 2.2);
-
-    const tickStep = Math.max(1, Math.ceil(ordered.length / 8));
-    for (let i = 0; i < ordered.length; i += tickStep) {
-      const px = x(i);
-      svg += `<line x1="${px}" y1="${margin.top + plotH}" x2="${px}" y2="${margin.top + plotH + 5}" stroke="#8e816c" stroke-width="1" />`;
-      svg += `<text x="${px}" y="${margin.top + plotH + 18}" text-anchor="middle" font-size="10" fill="#6f6658">${ordered[i].period_key}</text>`;
-    }
-    if ((ordered.length - 1) % tickStep !== 0) {
-      const last = ordered.length - 1;
-      const px = x(last);
-      svg += `<line x1="${px}" y1="${margin.top + plotH}" x2="${px}" y2="${margin.top + plotH + 5}" stroke="#8e816c" stroke-width="1" />`;
-      svg += `<text x="${px}" y="${margin.top + plotH + 18}" text-anchor="middle" font-size="10" fill="#6f6658">${ordered[last].period_key}</text>`;
-    }
-
-    const titlePrefix = mode === "cumulative" ? "Cumulative " : "";
-    svg += `<text x="${margin.left}" y="14" font-size="12" fill="#1d1a16">${titlePrefix}${title}</text>`;
-    svg += `<circle cx="${width - 230}" cy="14" r="4" fill="#b34a2f" />`;
-    svg += `<text x="${width - 220}" y="18" font-size="11" fill="#1d1a16">${m1LegendLabel}</text>`;
-    svg += `<circle cx="${width - 140}" cy="14" r="4" fill="#215561" />`;
-    svg += `<text x="${width - 130}" y="18" font-size="11" fill="#1d1a16">${m2LegendLabel}</text>`;
-    svg += `<circle cx="${width - 64}" cy="14" r="4" fill="#4e7a1e" />`;
-    svg += `<text x="${width - 54}" y="18" font-size="11" fill="#1d1a16">${bmLegendLabel}</text>`;
-
-    svg += '</svg>';
-    holder.innerHTML = svg;
-    attachHoverTooltip(holder);
+    const chart = new ApexCharts(holder, options);
+    chart.render();
+    activeCharts[targetId] = chart;
   }
 
   const startInput = document.getElementById("chart-start-date");
@@ -1084,56 +1030,63 @@
       return;
     }
 
-    const width = 920;
-    const height = 300;
-    const margin = { top: 20, right: 20, bottom: 50, left: 70 };
-    const plotW = width - margin.left - margin.right;
-    const plotH = height - margin.top - margin.bottom;
+    const categories = rows.map(r => r.date);
+    const data = rows.map(r => Number(r.rate));
 
-    const values = rows.map((r) => Number(r.rate)).filter((v) => Number.isFinite(v));
-    if (!values.length) {
-      fxChartHolder.innerHTML = '<div class="small">No valid FX values</div>';
-      return;
-    }
-    let minV = Math.min(...values);
-    let maxV = Math.max(...values);
-    if (Math.abs(maxV - minV) < 1e-9) {
-      maxV += 1;
-      minV -= 1;
-    }
+    const isDark = document.documentElement.getAttribute("data-theme") === "dark";
+    const textThemeColor = isDark ? "#94a3b8" : "#64748b";
+    const gridThemeColor = isDark ? "#334155" : "#e2e8f0";
 
-    const x = (i) => (rows.length === 1 ? margin.left + (plotW / 2) : margin.left + (i / (rows.length - 1)) * plotW);
-    const y = (v) => margin.top + ((maxV - v) / (maxV - minV)) * plotH;
+    const options = {
+      series: [
+        {
+          name: `${payload.currency}/${payload.base_currency}`,
+          data: data
+        }
+      ],
+      chart: {
+        type: 'line',
+        height: 300,
+        toolbar: { show: false },
+        background: 'transparent'
+      },
+      colors: ['#38bdf8'],
+      stroke: {
+        curve: 'smooth',
+        width: 2.5
+      },
+      grid: {
+        borderColor: gridThemeColor,
+        strokeDashArray: 4
+      },
+      theme: {
+        mode: isDark ? 'dark' : 'light'
+      },
+      xaxis: {
+        categories: categories,
+        labels: {
+          style: { colors: textThemeColor, fontSize: '10px' }
+        },
+        axisBorder: { show: false },
+        axisTicks: { show: false }
+      },
+      yaxis: {
+        labels: {
+          formatter: (v) => v !== null && v !== undefined ? v.toFixed(4) : '',
+          style: { colors: textThemeColor }
+        }
+      },
+      tooltip: {
+        theme: isDark ? 'dark' : 'light',
+        y: {
+          formatter: (v) => v !== null && v !== undefined ? v.toFixed(4) : ''
+        }
+      }
+    };
 
-    let svg = '';
-    svg += `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="FX chart">`;
-    svg += `<rect x="0" y="0" width="${width}" height="${height}" fill="#fffdfa" />`;
-    for (let i = 0; i <= 4; i++) {
-      const value = minV + ((maxV - minV) * i) / 4;
-      const py = y(value);
-      svg += `<line x1="${margin.left}" y1="${py}" x2="${margin.left + plotW}" y2="${py}" stroke="#ddd3c4" stroke-width="1" />`;
-      svg += `<text x="${margin.left - 8}" y="${py + 4}" text-anchor="end" font-size="11" fill="#6f6658">${value.toFixed(4)}</text>`;
-    }
-    svg += `<line x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${margin.top + plotH}" stroke="#b8ac99" stroke-width="1.2" />`;
-    svg += `<line x1="${margin.left}" y1="${margin.top + plotH}" x2="${margin.left + plotW}" y2="${margin.top + plotH}" stroke="#b8ac99" stroke-width="1.2" />`;
-
-    const points = rows.map((r, i) => `${x(i)},${y(Number(r.rate))}`).join(" ");
-    svg += `<polyline points="${points}" fill="none" stroke="#24546a" stroke-width="2.2" />`;
-    rows.forEach((row, i) => {
-      const px = x(i);
-      const py = y(Number(row.rate));
-      const tip = `${row.date} | ${payload.currency}/${payload.base_currency}: ${Number(row.rate).toFixed(4)}`;
-      svg += `<circle cx="${px}" cy="${py}" r="2.4" fill="#24546a" />`;
-      svg += `<circle class="chart-hover-node" cx="${px}" cy="${py}" r="8" fill="transparent" data-tip="${escapeXml(tip)}"><title>${escapeXml(tip)}</title></circle>`;
-    });
-    svg += `<text x="${margin.left}" y="14" font-size="12" fill="#1d1a16">FX ${payload.currency}/${payload.base_currency}</text>`;
-    svg += `</svg>`;
-
-    fxChartHolder.innerHTML = svg;
-    attachHoverTooltip(fxChartHolder);
-    if (fxChartMeta) {
-      fxChartMeta.textContent = `${payload.start_date} ~ ${payload.end_date} | points: ${rows.length}`;
-    }
+    const chart = new ApexCharts(holder, options);
+    chart.render();
+    activeCharts["fx-chart"] = chart;
   }
 
   async function loadFxHistoryAndRender() {
@@ -1301,6 +1254,37 @@
   fxLoadButton?.addEventListener("click", () => loadFxHistoryAndRender());
   fxCurrencySelect?.addEventListener("change", () => loadFxHistoryAndRender());
   fxDaysSelect?.addEventListener("change", () => loadFxHistoryAndRender());
+
+  // Handle theme changes to dynamically switch ApexCharts themes
+  window.addEventListener("theme-change", (e) => {
+    const nextTheme = e.detail.theme;
+    const isDark = nextTheme === "dark";
+    const textThemeColor = isDark ? "#94a3b8" : "#64748b";
+    const gridThemeColor = isDark ? "#334155" : "#e2e8f0";
+    const legendColor = isDark ? "#f1f5f9" : "#1e293b";
+
+    Object.keys(activeCharts).forEach((key) => {
+      const chart = activeCharts[key];
+      if (chart) {
+        chart.updateOptions({
+          theme: { mode: nextTheme },
+          grid: { borderColor: gridThemeColor },
+          xaxis: {
+            labels: { style: { colors: textThemeColor } }
+          },
+          yaxis: {
+            labels: { style: { colors: textThemeColor } }
+          },
+          tooltip: {
+            theme: nextTheme
+          },
+          legend: {
+            labels: { colors: legendColor }
+          }
+        });
+      }
+    });
+  });
 
   const bounds = collectDateBounds(chartPayload);
   startInput.value = bounds.minDate || "";

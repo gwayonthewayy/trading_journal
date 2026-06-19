@@ -67,142 +67,153 @@
 </section>
 
 {% if can_write %}
-  <div class="grid">
-    <section class="card">
-      <div class="card-head">
-        <h3>BUY</h3>
-        <p>신규 진입 기록</p>
-      </div>
-      <form id="buy-form">
-        <div class="form-row">
-          <input name="ticker" placeholder="Ticker" required />
-          <select name="market">
-            <option value="">Market</option>
-            <option value="KR">KR</option>
-            <option value="US">US</option>
-            <option value="HK">HK</option>
-            <option value="JP">JP</option>
-          </select>
-          <select name="currency">
-            <option value="">Currency</option>
-            <option value="KRW">KRW</option>
-            <option value="USD">USD</option>
-            <option value="HKD">HKD</option>
-            <option value="JPY">JPY</option>
-          </select>
-        </div>
-        <div class="form-row">
-          <input name="qty" type="number" step="any" placeholder="Qty" required />
-          <input name="price" type="number" step="any" placeholder="Price" required />
-          <input name="fee" type="number" step="any" value="0" placeholder="Fee" />
-          <input name="fx_rate_to_base" type="number" step="any" placeholder="FX to Base" />
-        </div>
-        <div class="form-row">
-          <input name="sl" type="number" step="any" placeholder="SL" />
-          <input name="tp" type="number" step="any" placeholder="TP" />
-          <input name="trade_group_title" placeholder="Trade Group Title" />
-        </div>
-        <input name="ts" type="datetime-local" step="1" placeholder="TS (optional)" />
-        <input name="buy_reason" placeholder="Reason" />
-        <input name="note" placeholder="Note" />
-        <button type="submit">Create BUY</button>
-        <div id="buy-error" class="error"></div>
-      </form>
-    </section>
+  <!-- Quick Action Bar -->
+  <section class="card quick-action-bar">
+    <button type="button" class="quick-action-btn btn-buy" onclick="openDrawer('drawer-buy')">➕ BUY 진입</button>
+    <button type="button" class="quick-action-btn btn-sell" onclick="openDrawer('drawer-sell')">➖ SELL 청산</button>
+    <button type="button" class="quick-action-btn btn-cash" onclick="openDrawer('drawer-cash')">💰 CASHFLOW</button>
+    <button type="button" class="quick-action-btn btn-sl" onclick="openDrawer('drawer-sl')">🎯 SL/TP 변경</button>
+  </section>
 
-    <section class="card">
-      <div class="card-head">
-        <h3>CASHFLOW</h3>
-        <p>입출금 기록</p>
+  <!-- Overlay -->
+  <div id="drawer-overlay" class="drawer-overlay" onclick="closeAllDrawers()"></div>
+
+  <!-- BUY Drawer -->
+  <div id="drawer-buy" class="drawer">
+    <div class="drawer-header">
+      <h3>BUY 신규 진입</h3>
+      <button type="button" class="drawer-close-btn" onclick="closeAllDrawers()">&times;</button>
+    </div>
+    <form id="buy-form">
+      <div class="form-row">
+        <input name="ticker" placeholder="Ticker" required />
+        <select name="market">
+          <option value="">Market</option>
+          <option value="KR">KR</option>
+          <option value="US">US</option>
+          <option value="HK">HK</option>
+          <option value="JP">JP</option>
+        </select>
+        <select name="currency">
+          <option value="">Currency</option>
+          <option value="KRW">KRW</option>
+          <option value="USD">USD</option>
+          <option value="HKD">HKD</option>
+          <option value="JPY">JPY</option>
+        </select>
       </div>
-      <form id="cashflow-form">
-        <div class="form-row">
-          <input name="cash_amount" type="number" step="any" placeholder="+10000 / -2000" required />
-          <select name="currency">
-            <option value="">Currency (optional)</option>
-            <option value="KRW">KRW</option>
-            <option value="USD">USD</option>
-            <option value="HKD">HKD</option>
-            <option value="JPY">JPY</option>
-          </select>
-          <input name="fx_rate_to_base" type="number" step="any" placeholder="FX to Base" />
-        </div>
-        <input name="ts" type="datetime-local" step="1" placeholder="TS (optional)" />
-        <input name="note" placeholder="Note" />
-        <button type="submit" class="secondary">Add CASHFLOW</button>
-        <div id="cashflow-error" class="error"></div>
-      </form>
-    </section>
+      <div class="form-row">
+        <input name="qty" type="number" step="any" placeholder="Qty" required />
+        <input name="price" type="number" step="any" placeholder="Price" required />
+        <input name="fee" type="number" step="any" value="0" placeholder="Fee" />
+        <input name="fx_rate_to_base" type="number" step="any" placeholder="FX to Base" />
+      </div>
+      <div class="form-row">
+        <input name="sl" type="number" step="any" placeholder="SL" />
+        <input name="tp" type="number" step="any" placeholder="TP" />
+        <input name="trade_group_title" placeholder="Trade Group Title" />
+      </div>
+      <input name="ts" type="datetime-local" step="1" placeholder="TS (optional)" />
+      <input name="buy_reason" placeholder="Reason" />
+      <input name="note" placeholder="Note" />
+      <button type="submit">Create BUY</button>
+      <div id="buy-error" class="error"></div>
+    </form>
   </div>
 
-  <div class="grid">
-    <section class="card">
-      <div class="card-head">
-        <h3>SELL</h3>
-        <p>청산과 lot 배분</p>
-      </div>
-      <form id="sell-form">
-        <div class="form-row">
-          <input id="sell-ticker" name="ticker" placeholder="Ticker" required />
-          <select name="market">
-            <option value="">Market (optional)</option>
-            <option value="KR">KR</option>
-            <option value="US">US</option>
-            <option value="HK">HK</option>
-            <option value="JP">JP</option>
-          </select>
-          <select name="currency">
-            <option value="">Currency (optional)</option>
-            <option value="KRW">KRW</option>
-            <option value="USD">USD</option>
-            <option value="HKD">HKD</option>
-            <option value="JPY">JPY</option>
-          </select>
-        </div>
-        <div class="form-row">
-          <input name="price" type="number" step="any" placeholder="Sell Price" required />
-          <input name="fee" type="number" step="any" value="0" placeholder="Fee" />
-          <input name="fx_rate_to_base" type="number" step="any" placeholder="FX to Base" />
-          <input name="trade_group_id" type="number" step="1" placeholder="Trade Group ID (opt)" />
-        </div>
-        <input name="ts" type="datetime-local" step="1" placeholder="TS (optional)" />
-        <input name="reason" placeholder="Reason" />
-        <input name="note" placeholder="Note" />
-
-        <div class="small">Allocations (lot 수량)</div>
-        <div id="allocations"></div>
-        <button id="add-allocation" type="button" class="secondary">Add Allocation</button>
-
-        <button type="submit">Create SELL</button>
-        <div id="sell-error" class="error"></div>
-      </form>
-    </section>
-
-    <section class="card">
-      <div class="card-head">
-        <h3>SL_UPDATE</h3>
-        <p>손절/목표 보호가 변경</p>
-      </div>
-      <form id="sl-form">
-        <select name="lot_id" required>
-          <option value="">Select Lot</option>
-          {% for row in portfolio.rows %}
-            {% for lot in row.lots %}
-              <option value="{{ lot.lot_id }}">{{ row.ticker }} lot#{{ lot.lot_id }} (open {{ "{:,.4f}".format(lot.qty_open) }}, SL {{ lot.sl_display or "None" }})</option>
-            {% endfor %}
-          {% endfor %}
+  <!-- CASHFLOW Drawer -->
+  <div id="drawer-cash" class="drawer">
+    <div class="drawer-header">
+      <h3>CASHFLOW 입출금</h3>
+      <button type="button" class="drawer-close-btn" onclick="closeAllDrawers()">&times;</button>
+    </div>
+    <form id="cashflow-form">
+      <div class="form-row">
+        <input name="cash_amount" type="number" step="any" placeholder="+10000 / -2000" required />
+        <select name="currency">
+          <option value="">Currency (optional)</option>
+          <option value="KRW">KRW</option>
+          <option value="USD">USD</option>
+          <option value="HKD">HKD</option>
+          <option value="JPY">JPY</option>
         </select>
-        <div class="form-row">
-          <input name="new_sl" type="number" step="any" placeholder="new SL" />
-          <input name="new_tp" type="number" step="any" placeholder="new TP" />
-        </div>
-        <input name="ts" type="datetime-local" step="1" placeholder="TS (optional)" />
-        <input name="reason" placeholder="Reason" />
-        <input name="note" placeholder="Note" />
-        <button type="submit">Update SL/TP</button>
-        <div id="sl-error" class="error"></div>
-      </form>
-    </section>
+        <input name="fx_rate_to_base" type="number" step="any" placeholder="FX to Base" />
+      </div>
+      <input name="ts" type="datetime-local" step="1" placeholder="TS (optional)" />
+      <input name="note" placeholder="Note" />
+      <button type="submit" class="secondary">Add CASHFLOW</button>
+      <div id="cashflow-error" class="error"></div>
+    </form>
+  </div>
+
+  <!-- SELL Drawer -->
+  <div id="drawer-sell" class="drawer">
+    <div class="drawer-header">
+      <h3>SELL 청산</h3>
+      <button type="button" class="drawer-close-btn" onclick="closeAllDrawers()">&times;</button>
+    </div>
+    <form id="sell-form">
+      <div class="form-row">
+        <input id="sell-ticker" name="ticker" placeholder="Ticker" required />
+        <select name="market">
+          <option value="">Market (optional)</option>
+          <option value="KR">KR</option>
+          <option value="US">US</option>
+          <option value="HK">HK</option>
+          <option value="JP">JP</option>
+        </select>
+        <select name="currency">
+          <option value="">Currency (optional)</option>
+          <option value="KRW">KRW</option>
+          <option value="USD">USD</option>
+          <option value="HKD">HKD</option>
+          <option value="JPY">JPY</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <input name="price" type="number" step="any" placeholder="Sell Price" required />
+        <input name="fee" type="number" step="any" value="0" placeholder="Fee" />
+        <input name="fx_rate_to_base" type="number" step="any" placeholder="FX to Base" />
+        <input name="trade_group_id" type="number" step="1" placeholder="Trade Group ID (opt)" />
+      </div>
+      <input name="ts" type="datetime-local" step="1" placeholder="TS (optional)" />
+      <input name="reason" placeholder="Reason" />
+      <input name="note" placeholder="Note" />
+
+      <div class="small" style="margin-top:12px; margin-bottom:6px;">Allocations (lot 수량)</div>
+      <div id="allocations"></div>
+      <button id="add-allocation" type="button" class="secondary" style="margin-bottom:12px;">Add Allocation</button>
+
+      <button type="submit">Create SELL</button>
+      <div id="sell-error" class="error"></div>
+    </form>
+  </div>
+
+  <!-- SL_UPDATE Drawer -->
+  <div id="drawer-sl" class="drawer">
+    <div class="drawer-header">
+      <h3>SL_UPDATE 변경</h3>
+      <button type="button" class="drawer-close-btn" onclick="closeAllDrawers()">&times;</button>
+    </div>
+    <form id="sl-form">
+      <select name="lot_id" required style="margin-bottom:12px;">
+        <option value="">Select Lot</option>
+        {% for row in portfolio.rows %}
+          {% for lot in row.lots %}
+            <option value="{{ lot.lot_id }}">{{ row.ticker }} lot#{{ lot.lot_id }} (open {{ "{:,.4f}".format(lot.qty_open) }}, SL {{ lot.sl_display or "None" }})</option>
+          {% endfor %}
+        {% endfor %}
+      </select>
+      <div class="form-row">
+        <input name="new_sl" type="number" step="any" placeholder="new SL" />
+        <input name="new_tp" type="number" step="any" placeholder="new TP" />
+      </div>
+      <input name="ts" type="datetime-local" step="1" placeholder="TS (optional)" />
+      <input name="reason" placeholder="Reason" />
+      <input name="note" placeholder="Note" />
+      <button type="submit">Update SL/TP</button>
+      <div id="sl-error" class="error"></div>
+    </form>
   </div>
 
   <select id="lot-options-template" style="display:none">
@@ -598,6 +609,32 @@
   const canWrite = {{ "true" if can_write else "false" }};
   const baseCurrencySymbol = {{ data.base_currency_symbol | tojson }};
   const krwCurrencySymbol = {{ data.krw_currency_symbol | tojson }};
+
+  // Drawer Control Functions
+  function openDrawer(drawerId) {
+    closeAllDrawers();
+    const drawer = document.getElementById(drawerId);
+    const overlay = document.getElementById("drawer-overlay");
+    if (drawer && overlay) {
+      drawer.classList.add("is-active");
+      overlay.classList.add("is-active");
+      document.body.style.overflow = "hidden";
+    }
+  }
+
+  function closeAllDrawers() {
+    document.querySelectorAll(".drawer").forEach((d) => d.classList.remove("is-active"));
+    const overlay = document.getElementById("drawer-overlay");
+    if (overlay) overlay.classList.remove("is-active");
+    document.body.style.overflow = "";
+  }
+
+  // Handle escape key to close drawers
+  window.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      closeAllDrawers();
+    }
+  });
 
   function parsePayload(form, numericFields) {
     const fd = new FormData(form);

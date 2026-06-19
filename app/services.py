@@ -24,6 +24,7 @@ from sqlmodel import Session, select
 from app.database import DB_PATH
 from app.models import Event, EventType, Lot, SellAllocation, Setting, Symbol, TradeGroup
 from app.schemas import (
+    BonusIssueRequest,
     BuyRequest,
     CashflowRequest,
     DuplicateCheckRequest,
@@ -503,6 +504,15 @@ def _build_lot_states_from_events(
                 lot_state["qty_open"] -= alloc.qty_sold
             continue
 
+        if event.type == EventType.CORPORATE_ACTION and event.lot_id is not None:
+            lot_state = lot_states.get(event.lot_id)
+            if lot_state is None:
+                continue
+            lot_state["qty_open"] += event.qty or 0.0
+            if event.price is not None:
+                lot_state["entry_price"] = event.price
+            continue
+
         if event.type == EventType.SL_UPDATE and event.lot_id is not None:
             lot_state = lot_states.get(event.lot_id)
             if lot_state is None:
@@ -543,6 +553,15 @@ def _assert_non_negative_lot_states(session: Session) -> None:
                         detail=f"historical allocation exceeds open qty for lot {alloc.lot_id}",
                     )
                 lot_qty[alloc.lot_id] = max(0.0, next_qty)
+            continue
+
+        if event.type == EventType.CORPORATE_ACTION and event.lot_id is not None:
+            if event.lot_id not in lot_qty:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"corporate action references unknown lot {event.lot_id}",
+                )
+            lot_qty[event.lot_id] += event.qty or 0.0
 
 
 def _sync_lot_snapshots_from_events(session: Session) -> None:
@@ -557,6 +576,7 @@ def _sync_lot_snapshots_from_events(session: Session) -> None:
             lot.qty_open = 0.0
         else:
             lot.qty_open = max(0.0, state["qty_open"])
+            lot.entry_price = state["entry_price"]
             lot.sl = state["sl"]
             lot.tp = state["tp"]
         session.add(lot)
@@ -637,6 +657,73 @@ def create_buy(session: Session, req: BuyRequest) -> dict[str, Any]:
     _sync_lot_snapshots_from_events(session)
 
     return {"lot_id": lot.id, "event_id": event.id}
+
+
+def create_bonus_issue(session: Session, req: BonusIssueRequest) -> dict[str, Any]:
+    source_tag = req.source_tag.strip()
+    marker = f"corporate_action={source_tag}"
+    duplicate = session.exec(
+        select(Event).where(
+            Event.type == EventType.CORPORATE_ACTION,
+            Event.note.contains(marker),
+        )
+    ).first()
+    if duplicate is not None:
+        return {
+            "duplicate": True,
+            "event_id": duplicate.id,
+            "lot_id": duplicate.lot_id,
+            "new_qty": None,
+            "new_entry_price": duplicate.price,
+        }
+
+    lot = session.get(Lot, req.lot_id)
+    if lot is None:
+        raise HTTPException(status_code=404, detail="lot not found")
+
+    event_ts = _normalize_optional_ts(req.ts)
+    if event_ts is None or event_ts < lot.opened_at:
+        raise HTTPException(status_code=400, detail="bonus issue must not precede lot opening")
+
+    states = _build_lot_states_from_events(session, up_to_ts=event_ts)
+    state = states.get(req.lot_id)
+    if state is None or state["qty_open"] <= 0:
+        raise HTTPException(status_code=400, detail="bonus issue requires an open lot")
+
+    old_qty = float(state["qty_open"])
+    old_entry_price = float(state["entry_price"])
+    new_qty = old_qty + req.additional_qty
+    new_entry_price = (old_qty * old_entry_price) / new_qty
+    detail = marker if not req.note else f"{marker};{req.note.strip()}"
+
+    event = Event(
+        ts=event_ts,
+        type=EventType.CORPORATE_ACTION,
+        ticker=lot.ticker,
+        market=lot.market,
+        exchange=lot.exchange,
+        currency=lot.currency,
+        fx_rate_to_base=lot.fx_rate_to_base,
+        trade_group_id=lot.trade_group_id,
+        lot_id=lot.id,
+        qty=req.additional_qty,
+        price=new_entry_price,
+        fee=0.0,
+        reason="BONUS_ISSUE",
+        note=detail,
+    )
+    session.add(event)
+    session.flush()
+    _assert_non_negative_lot_states(session)
+    _sync_lot_snapshots_from_events(session)
+
+    return {
+        "duplicate": False,
+        "event_id": event.id,
+        "lot_id": lot.id,
+        "new_qty": new_qty,
+        "new_entry_price": new_entry_price,
+    }
 
 
 def _compute_realized_pnl_from_allocations(

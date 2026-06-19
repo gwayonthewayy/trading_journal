@@ -25,6 +25,14 @@ class BuyRequest(BaseModel):
     ts: Optional[datetime] = None
 
 
+class BonusIssueRequest(BaseModel):
+    lot_id: int = Field(gt=0)
+    additional_qty: float = Field(gt=0)
+    ts: datetime
+    source_tag: str = Field(min_length=1, max_length=160)
+    note: Optional[str] = None
+
+
 class SellAllocationIn(BaseModel):
     lot_id: int
     qty_sold: float = Field(gt=0)

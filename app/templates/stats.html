@@ -612,7 +612,7 @@
     if (!holder || !summary) return;
 
     if (activeCharts["chart-distribution"]) {
-      activeCharts["chart-distribution"].destroy();
+      try { activeCharts["chart-distribution"].destroy(); } catch (_) {}
       delete activeCharts["chart-distribution"];
     }
 
@@ -751,7 +751,7 @@
     if (!holder || !summary) return;
 
     if (activeCharts[holderId]) {
-      activeCharts[holderId].destroy();
+      try { activeCharts[holderId].destroy(); } catch (_) {}
       delete activeCharts[holderId];
     }
 
@@ -915,7 +915,7 @@
     if (!holder) return;
 
     if (activeCharts[targetId]) {
-      activeCharts[targetId].destroy();
+      try { activeCharts[targetId].destroy(); } catch (_) {}
       delete activeCharts[targetId];
     }
 
@@ -1040,6 +1040,11 @@
 
   function renderFxChart(payload) {
     if (!fxChartHolder) return;
+
+    if (activeCharts["fx-chart"]) {
+      try { activeCharts["fx-chart"].destroy(); } catch (_) {}
+      delete activeCharts["fx-chart"];
+    }
     const rows = payload?.rows || [];
     if (!rows.length) {
       fxChartHolder.innerHTML = '<div class="small">No FX data</div>';

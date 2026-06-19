@@ -1,5 +1,6 @@
 import unittest
 from datetime import datetime
+from pathlib import Path
 
 from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, SQLModel, create_engine, select
@@ -85,6 +86,18 @@ class BonusIssueTests(unittest.TestCase):
         self.assertFalse(first["duplicate"])
         self.assertTrue(second["duplicate"])
         self.assertEqual(len(actions), 1)
+
+    def test_corporate_action_is_not_counted_as_trade_event(self):
+        from app.services import _is_counted_journal_event_type
+
+        self.assertFalse(_is_counted_journal_event_type("CORPORATE_ACTION"))
+        self.assertFalse(_is_counted_journal_event_type("SL_UPDATE"))
+        self.assertTrue(_is_counted_journal_event_type("BUY"))
+
+    def test_journal_filter_exposes_corporate_action(self):
+        template = Path("app/templates/journal.html").read_text(encoding="utf-8")
+
+        self.assertIn('<option value="CORPORATE_ACTION"', template)
 
 
 if __name__ == "__main__":

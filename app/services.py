@@ -117,6 +117,11 @@ ACTIONABLE_MANDATORY_FIELDS = (
 )
 DEFAULT_MAX_PLANNED_RISK_PCT = 8.0
 
+
+def _is_counted_journal_event_type(event_type: str | EventType | None) -> bool:
+    value = event_type.value if isinstance(event_type, EventType) else str(event_type or "").upper()
+    return value not in {EventType.SL_UPDATE.value, EventType.CORPORATE_ACTION.value}
+
 MONTHLY_CHECK_METRICS: list[dict[str, str]] = [
     {"key": "trade_count", "label": "Trades", "format": "count"},
     {"key": "avg_profit_pct", "label": "Avg Profit", "format": "pct"},
@@ -2310,6 +2315,29 @@ def build_journal(
                 risk_delta += lot_delta
                 risk_delta_details.append(f"lot#{alloc.lot_id} {lot_delta:+.2f}")
 
+        elif event.type == EventType.CORPORATE_ACTION and event.lot_id is not None:
+            lot_state = lot_states.get(event.lot_id)
+            if lot_state is not None:
+                before = _calc_open_risk_from_values(
+                    entry_price=lot_state["entry_price"],
+                    sl=lot_state["sl"],
+                    qty_open=lot_state["qty_open"],
+                    fx_rate_to_base=lot_state.get("fx_rate_to_base", 1.0),
+                    est_exit_fee_rate=est_exit_fee_rate,
+                )
+                lot_state["qty_open"] += event.qty or 0.0
+                if event.price is not None:
+                    lot_state["entry_price"] = event.price
+                after = _calc_open_risk_from_values(
+                    entry_price=lot_state["entry_price"],
+                    sl=lot_state["sl"],
+                    qty_open=lot_state["qty_open"],
+                    fx_rate_to_base=lot_state.get("fx_rate_to_base", 1.0),
+                    est_exit_fee_rate=est_exit_fee_rate,
+                )
+                risk_delta = after - before
+                risk_delta_details.append(f"lot#{event.lot_id} {risk_delta:+.2f}")
+
         elif event.type == EventType.SL_UPDATE and event.lot_id is not None:
             lot_state = lot_states.get(event.lot_id)
             if lot_state is not None:
@@ -2518,7 +2546,7 @@ def build_journal(
 
     filtered_count = len(rows_filtered)
     event_count_ex_sl_update = sum(
-        1 for row in rows_filtered if str(row.get("type") or "").upper() != EventType.SL_UPDATE.value
+        1 for row in rows_filtered if _is_counted_journal_event_type(row.get("type"))
     )
     total_pages = max(1, math.ceil(filtered_count / page_size)) if filtered_count else 1
     if page > total_pages:

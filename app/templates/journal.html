@@ -4,7 +4,7 @@
   <h1>Trading Journal</h1>
   <p>매매 기록, 실행 이벤트, 리뷰를 한 화면에서 관리합니다.</p>
   <div class="pill-row">
-    <span class="pill">Event Count (excl. SL_UPDATE) {{ data.event_count_ex_sl_update }}</span>
+    <span class="pill">Event Count (trades/cash) {{ data.event_count_ex_sl_update }}</span>
     <span class="pill">
       Open Pos (MTM)
       {{ data.usd_currency_symbol }}{{ "{:,.2f}".format(data.open_position_mtm_dual.usd) if data.open_position_mtm_dual.usd is not none else "N/A" }}
@@ -62,7 +62,7 @@
   <div class="metric">
     <div class="label">Event Count</div>
     <div class="value">{{ data.event_count_ex_sl_update }}</div>
-    <div class="hint">현재 필터 기준 (SL_UPDATE 제외)</div>
+    <div class="hint">현재 필터 기준 (SL_UPDATE·기업행위 제외)</div>
   </div>
 </section>
 
@@ -247,6 +247,7 @@
       <option value="">All Types</option>
       <option value="BUY" {% if data.filters.event_type == "BUY" %}selected{% endif %}>BUY</option>
       <option value="SELL" {% if data.filters.event_type == "SELL" %}selected{% endif %}>SELL</option>
+      <option value="CORPORATE_ACTION" {% if data.filters.event_type == "CORPORATE_ACTION" %}selected{% endif %}>CORPORATE_ACTION</option>
       <option value="CASHFLOW" {% if data.filters.event_type == "CASHFLOW" %}selected{% endif %}>CASHFLOW</option>
       <option value="SL_UPDATE" {% if data.filters.event_type == "SL_UPDATE" %}selected{% endif %}>SL_UPDATE</option>
       <option value="REVIEW" {% if data.filters.event_type == "REVIEW" %}selected{% endif %}>REVIEW</option>

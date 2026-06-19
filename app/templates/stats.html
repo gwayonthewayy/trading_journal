@@ -614,6 +614,7 @@
     if (activeCharts["chart-distribution"]) {
       try { activeCharts["chart-distribution"].destroy(); } catch (_) {}
       delete activeCharts["chart-distribution"];
+      holder.innerHTML = "";
     }
 
     const granularity = distGranularity?.value || "weekly";
@@ -753,6 +754,7 @@
     if (activeCharts[holderId]) {
       try { activeCharts[holderId].destroy(); } catch (_) {}
       delete activeCharts[holderId];
+      holder.innerHTML = "";
     }
 
     const values = (rows || [])
@@ -917,6 +919,7 @@
     if (activeCharts[targetId]) {
       try { activeCharts[targetId].destroy(); } catch (_) {}
       delete activeCharts[targetId];
+      holder.innerHTML = "";
     }
 
     const ordered = [...rows].reverse();
@@ -1044,6 +1047,7 @@
     if (activeCharts["fx-chart"]) {
       try { activeCharts["fx-chart"].destroy(); } catch (_) {}
       delete activeCharts["fx-chart"];
+      fxChartHolder.innerHTML = "";
     }
     const rows = payload?.rows || [];
     if (!rows.length) {
@@ -1226,7 +1230,6 @@
 
   async function loadBenchmarkAndRender() {
     rangeError.textContent = "";
-    renderFilteredCharts();
     try {
       const selected = benchmarkSelect.value;
       await loadBenchmark(selected);
@@ -1312,7 +1315,6 @@
   startInput.value = bounds.minDate || "";
   endInput.value = bounds.maxDate || "";
   updateModeButtons();
-  renderFilteredCharts();
   loadFxHistoryAndRender();
   loadBenchmarkAndRender();
 </script>

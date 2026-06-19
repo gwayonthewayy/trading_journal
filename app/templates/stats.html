@@ -389,7 +389,9 @@
     </table>
   </div>
 </section>
+{% endblock %}
 
+{% block scripts %}
 <script>
   const chartPayload = {
     daily: {{ data.daily | tojson }},

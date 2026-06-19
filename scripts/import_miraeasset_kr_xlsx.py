@@ -773,6 +773,7 @@ def apply_import_plan(
     currency: str,
     allow_nonempty_db: bool,
     dedupe_existing: bool,
+    exchange: str | None = None,
 ) -> dict[str, Any]:
     init_db()
 
@@ -854,6 +855,7 @@ def apply_import_plan(
                     req = BuyRequest(
                         ticker=planned.ticker,
                         market=market,
+                        exchange=exchange,
                         currency=currency,
                         qty=planned.qty,
                         price=planned.price,
@@ -942,6 +944,7 @@ def apply_import_plan(
                         SellRequest(
                             ticker=planned.ticker,
                             market=market,
+                            exchange=exchange,
                             currency=currency,
                             price=planned.price,
                             fee=fee_for_group,

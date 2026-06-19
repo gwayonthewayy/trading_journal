@@ -306,6 +306,8 @@ def _currency_symbol(currency: str | None) -> str:
         return "₩"
     if normalized == "HKD":
         return "HK$"
+    if normalized == "JPY":
+        return "¥"
     if normalized:
         return f"{normalized} "
     return ""
@@ -2618,6 +2620,9 @@ def _quote_symbol_candidates(ticker: str, market: str | None) -> list[str]:
             candidates.append(normalized_ticker)
         elif "." not in normalized_ticker:
             candidates.append(f"{normalized_ticker}.HK")
+    elif normalized_market == "JP":
+        base = normalized_ticker[:-2] if normalized_ticker.endswith(".T") else normalized_ticker
+        candidates.append(f"{base}.T")
     elif normalized_market == "KR":
         if normalized_ticker.endswith(".KS") or normalized_ticker.endswith(".KQ"):
             candidates.append(normalized_ticker)

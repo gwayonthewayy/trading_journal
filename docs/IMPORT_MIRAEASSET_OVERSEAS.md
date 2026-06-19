@@ -1,11 +1,12 @@
 # Mirae Asset Overseas XLSX Import
 
-This importer loads overseas trade history (`USD`, `HKD`) from Mirae Asset xlsx into the local Trade Journal DB.
+This importer loads overseas trade history (`USD`, `HKD`, `JPY`) from Mirae Asset xlsx into the local Trade Journal DB.
 
 ## Rules Applied
 
 - `USD` -> `market=US`, `currency=USD`
 - `HKD` -> `market=HK`, `currency=HKD`
+- `JPY` -> `market=JP`, `currency=JPY`, `exchange=TSE`
 - If SELL appears before in-file BUY history:
   - available qty = 0: skip that SELL row
   - available qty > 0 but less than sell qty: apply partial sell and ignore extra

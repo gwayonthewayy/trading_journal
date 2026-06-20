@@ -742,9 +742,9 @@ tr td:last-child {
   min-width: 18px;
   padding: 0;
   border-radius: 999px;
-  border: 1px solid #b9c9d9;
-  background: #fff;
-  color: #7a1b1b;
+  border: 1px solid var(--table-border-strong);
+  background: var(--el-bg);
+  color: var(--danger);
   line-height: 1;
   font-size: 0.72rem;
   opacity: 0;
@@ -965,7 +965,7 @@ summary {
 
 .th-filter-menu-title {
   font-size: 0.78rem;
-  color: #1f3a51;
+  color: var(--text);
   font-weight: 700;
 }
 
@@ -973,7 +973,7 @@ summary {
   display: flex;
   gap: 6px;
   padding: 8px 10px;
-  border-bottom: 1px solid #e8edf3;
+  border-bottom: 1px solid var(--table-border);
 }
 
 .th-filter-menu-actions button,
@@ -1000,7 +1000,7 @@ summary {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  color: #233749;
+  color: var(--text);
   font-size: 0.79rem;
   text-transform: none;
   letter-spacing: normal;
@@ -1017,7 +1017,7 @@ summary {
   margin: 0;
   padding: 0;
   order: 2;
-  accent-color: #1f5473;
+  accent-color: var(--primary);
 }
 
 .th-filter-option-text {
@@ -1028,14 +1028,14 @@ summary {
 }
 
 .th-filter-option:hover {
-  background: #f5f9fd;
-  border-color: #c9d9e7;
+  background: var(--surface-soft);
+  border-color: var(--table-border-strong);
 }
 
 .th-filter-menu-foot {
   padding: 8px 10px;
-  border-top: 1px solid #e8edf3;
-  background: #f9fbfd;
+  border-top: 1px solid var(--table-border);
+  background: var(--table-th-bg);
 }
 
 .th-filter-menu-foot .th-filter-menu-apply {

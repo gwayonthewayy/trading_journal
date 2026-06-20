@@ -2,26 +2,11 @@
 {% block page_header %}
 <section class="page-head">
   <h1>Performance Stats</h1>
-  <p>Method 1은 단순 자산대비 수익률, Method 2는 입출금 시점을 가중한 자본(base) 대비 수익률입니다.</p>
+  <p>Method 1? ?⑥닚 ?먯궛?鍮??섏씡瑜? Method 2???낆텧湲??쒖젏??媛以묓븳 ?먮낯(base) ?鍮??섏씡瑜좎엯?덈떎.</p>
 </section>
 {% endblock %}
 
 {% block content %}
-<div id="js-error-console" style="display:none; background:#fee2e2; border:1px solid #ef4444; color:#991b1b; padding:12px; margin:16px 0; border-radius:6px; font-family:monospace; font-size:0.9rem; z-index:9999; position:relative;">
-  <strong>[Antigravity Debug] JavaScript Error Detected:</strong>
-  <pre id="js-error-msg" style="margin:8px 0 0 0; white-space:pre-wrap; font-family:monospace;"></pre>
-</div>
-<script>
-  window.addEventListener('error', function(e) {
-    const consoleDiv = document.getElementById('js-error-console');
-    const msgPre = document.getElementById('js-error-msg');
-    if (consoleDiv && msgPre) {
-      consoleDiv.style.display = 'block';
-      msgPre.textContent += `\nMessage: ${e.message}\nSource: ${e.filename}:${e.lineno}:${e.colno}\nStack: ${e.error ? e.error.stack : 'N/A'}\n`;
-    }
-  });
-</script>
-
 <div class="grid">
   <section class="card">
     <div class="card-head">
@@ -84,7 +69,7 @@
 <section class="card">
   <div class="card-head">
     <h3>Chart Range Filter</h3>
-    <p>기간과 벤치마크를 바꿔 수익률 곡선을 비교합니다.</p>
+    <p>湲곌컙怨?踰ㅼ튂留덊겕瑜?諛붽퓭 ?섏씡瑜?怨≪꽑??鍮꾧탳?⑸땲??</p>
   </div>
   <form id="chart-range-form">
     <div class="form-row">
@@ -121,25 +106,25 @@
 
 <section class="card">
   <h3>Return Chart (Daily)</h3>
-  <p class="small">X: 기간, Y: 수익률(%). 주황(단순), 청록(시간가중), 녹색(벤치마크)</p>
+  <p class="small">X: 湲곌컙, Y: ?섏씡瑜?%). 二쇳솴(?⑥닚), 泥?줉(?쒓컙媛以?, ?뱀깋(踰ㅼ튂留덊겕)</p>
   <div id="chart-daily" class="chart-wrap"></div>
 </section>
 
 <section class="card">
   <h3>Return Chart (Weekly)</h3>
-  <p class="small">X: 기간, Y: 수익률(%). 주황(단순), 청록(시간가중), 녹색(벤치마크)</p>
+  <p class="small">X: 湲곌컙, Y: ?섏씡瑜?%). 二쇳솴(?⑥닚), 泥?줉(?쒓컙媛以?, ?뱀깋(踰ㅼ튂留덊겕)</p>
   <div id="chart-weekly" class="chart-wrap"></div>
 </section>
 
 <section class="card">
   <h3>Return Chart (Monthly)</h3>
-  <p class="small">X: 기간, Y: 수익률(%). 주황(단순), 청록(시간가중), 녹색(벤치마크)</p>
+  <p class="small">X: 湲곌컙, Y: ?섏씡瑜?%). 二쇳솴(?⑥닚), 泥?줉(?쒓컙媛以?, ?뱀깋(踰ㅼ튂留덊겕)</p>
   <div id="chart-monthly" class="chart-wrap"></div>
 </section>
 
 <section class="card">
   <h3>Return Chart (Yearly)</h3>
-  <p class="small">X: 기간, Y: 수익률(%). 주황(단순), 청록(시간가중), 녹색(벤치마크)</p>
+  <p class="small">X: 湲곌컙, Y: ?섏씡瑜?%). 二쇳솴(?⑥닚), 泥?줉(?쒓컙媛以?, ?뱀깋(踰ㅼ튂留덊겕)</p>
   <div id="chart-yearly" class="chart-wrap"></div>
 </section>
 
@@ -174,7 +159,7 @@
 <section class="card">
   <div class="card-head">
     <h3>Return Distribution</h3>
-    <p>내 수익률 값의 분포를 구간별 빈도로 확인합니다.</p>
+    <p>???섏씡瑜?媛믪쓽 遺꾪룷瑜?援ш컙蹂?鍮덈룄濡??뺤씤?⑸땲??</p>
   </div>
   <div class="form-row">
     <label>
@@ -189,8 +174,8 @@
     <label>
       Metric
       <select id="dist-method">
-        <option value="return_method1_pct">Method 1 (단순)</option>
-        <option value="return_method2_pct" selected>Method 2 (시간가중)</option>
+        <option value="return_method1_pct">Method 1 (?⑥닚)</option>
+        <option value="return_method2_pct" selected>Method 2 (?쒓컙媛以?</option>
       </select>
     </label>
   </div>
@@ -201,7 +186,7 @@
 <section class="card">
   <div class="card-head">
     <h3>Closed Trade PnL Distribution</h3>
-    <p>모든 종료(SELL) 거래의 실현손익 분포를 자동 구간으로 표시합니다.</p>
+    <p>紐⑤뱺 醫낅즺(SELL) 嫄곕옒???ㅽ쁽?먯씡 遺꾪룷瑜??먮룞 援ш컙?쇰줈 ?쒖떆?⑸땲??</p>
   </div>
   <div class="dist-layout">
     <div>
@@ -228,7 +213,7 @@
 <section class="card">
   <div class="card-head">
     <h3>Closed Trade Return Distribution</h3>
-    <p>모든 종료(SELL) 거래의 개별 수익률/손실률 분포(%)를 표시합니다.</p>
+    <p>紐⑤뱺 醫낅즺(SELL) 嫄곕옒??媛쒕퀎 ?섏씡瑜??먯떎瑜?遺꾪룷(%)瑜??쒖떆?⑸땲??</p>
   </div>
   <div class="dist-layout">
     <div>
@@ -605,17 +590,86 @@
 
   // Active ApexCharts Map
   const activeCharts = {};
+  const chartRenderStates = {};
 
-  function renderDistributionChart(datasets, mode) {
+  function warnChartLifecycle(holderId, message, error) {
+    if (error) {
+      console.warn(`[ApexCharts:${holderId}] ${message}`, error);
+      return;
+    }
+    console.warn(`[ApexCharts:${holderId}] ${message}`);
+  }
+
+  async function renderApexChartWithLifecycle(holderId, options) {
+    const holder = document.getElementById(holderId);
+    if (!holder) return null;
+
+    const state = chartRenderStates[holderId] || (chartRenderStates[holderId] = { token: 0, queue: Promise.resolve() });
+    const token = ++state.token;
+
+    const run = async () => {
+      const previous = activeCharts[holderId];
+      if (previous) {
+        try {
+          previous.destroy();
+        } catch (err) {
+          warnChartLifecycle(holderId, "destroy failed before rerender", err);
+        }
+        if (activeCharts[holderId] === previous) {
+          delete activeCharts[holderId];
+        }
+      }
+
+      holder.innerHTML = "";
+
+      if (!window.ApexCharts) {
+        holder.innerHTML = '<div class="small">Chart library unavailable. Please reload the page.</div>';
+        return null;
+      }
+
+      let chart;
+      try {
+        chart = new ApexCharts(holder, options);
+      } catch (err) {
+        holder.innerHTML = '<div class="small">Chart initialization failed.</div>';
+        warnChartLifecycle(holderId, "chart initialization failed", err);
+        return null;
+      }
+
+      try {
+        await chart.render();
+      } catch (err) {
+        warnChartLifecycle(holderId, "chart render failed", err);
+        try {
+          chart.destroy();
+        } catch (destroyErr) {
+          warnChartLifecycle(holderId, "destroy failed after render error", destroyErr);
+        }
+        holder.innerHTML = '<div class="small">Chart failed to render.</div>';
+        return null;
+      }
+
+      if (state.token !== token) {
+        try {
+          chart.destroy();
+        } catch (err) {
+          warnChartLifecycle(holderId, "destroy failed for stale render", err);
+        }
+        return null;
+      }
+
+      activeCharts[holderId] = chart;
+      return chart;
+    };
+
+    state.queue = state.queue.then(run, run);
+    return state.queue;
+  }
+
+  async function renderDistributionChart(datasets, mode) {
     const holder = document.getElementById("chart-distribution");
     const summary = document.getElementById("dist-summary");
     if (!holder || !summary) return;
-
-    if (activeCharts["chart-distribution"]) {
-      try { activeCharts["chart-distribution"].destroy(); } catch (_) {}
-      delete activeCharts["chart-distribution"];
-      holder.innerHTML = "";
-    }
 
     const granularity = distGranularity?.value || "weekly";
     const metricKey = distMethod?.value || "return_method2_pct";
@@ -727,16 +781,14 @@
       }
     };
 
-    const chart = new ApexCharts(holder, options);
-    chart.render();
-    activeCharts["chart-distribution"] = chart;
+    await renderApexChartWithLifecycle("chart-distribution", options);
 
     const mean = values.reduce((acc, v) => acc + v, 0) / n;
     const median = percentile(sorted, 0.5);
     summary.textContent = `N=${n} | Mean=${mean.toFixed(2)}% | Median=${(median ?? 0).toFixed(2)}% | Min=${minV.toFixed(2)}% | Max=${maxV.toFixed(2)}%`;
   }
 
-  function renderClosedTradeHistogram({
+  async function renderClosedTradeHistogram({
     rows,
     valueKey,
     holderId,
@@ -751,18 +803,12 @@
     const summary = document.getElementById(summaryId);
     if (!holder || !summary) return;
 
-    if (activeCharts[holderId]) {
-      try { activeCharts[holderId].destroy(); } catch (_) {}
-      delete activeCharts[holderId];
-      holder.innerHTML = "";
-    }
-
     const values = (rows || [])
       .map((row) => safeNum(row[valueKey]))
       .filter((value) => value !== null);
 
     if (!values.length) {
-      summary.textContent = "선택한 기간에 유효한 종료 거래 데이터가 없습니다.";
+      summary.textContent = "?좏깮??湲곌컙???좏슚??醫낅즺 嫄곕옒 ?곗씠?곌? ?놁뒿?덈떎.";
       holder.innerHTML = '<div class="small">No closed-trade data</div>';
       clearDistributionTableBody(tableBodyId);
       return;
@@ -872,18 +918,16 @@
       }
     };
 
-    const chart = new ApexCharts(holder, options);
-    chart.render();
-    activeCharts[holderId] = chart;
+    await renderApexChartWithLifecycle(holderId, options);
 
     const mean = values.reduce((acc, value) => acc + value, 0) / n;
     const median = percentile(sorted, 0.5);
     summary.textContent = `N=${n} | Mean=${valueFormatter(mean, 2)} | Median=${valueFormatter(median ?? 0, 2)} | Min=${valueFormatter(minV, 2)} | Max=${valueFormatter(maxV, 2)}`;
   }
 
-  function renderClosedTradeDistribution(rows, startDateStr, endDateStr) {
+  async function renderClosedTradeDistribution(rows, startDateStr, endDateStr) {
     const filteredRows = filterClosedTradesByRange(rows, startDateStr, endDateStr);
-    renderClosedTradeHistogram({
+    await renderClosedTradeHistogram({
       rows: filteredRows,
       valueKey: "realized_pnl",
       holderId: "chart-closed-dist",
@@ -896,10 +940,10 @@
     });
   }
 
-  function renderClosedTradeReturnDistribution(rows, startDateStr, endDateStr) {
+  async function renderClosedTradeReturnDistribution(rows, startDateStr, endDateStr) {
     const filteredRows = filterClosedTradesByRange(rows, startDateStr, endDateStr)
       .filter((row) => safeNum(row.return_pct) !== null);
-    renderClosedTradeHistogram({
+    await renderClosedTradeHistogram({
       rows: filteredRows,
       valueKey: "return_pct",
       holderId: "chart-closed-return-dist",
@@ -912,15 +956,9 @@
     });
   }
 
-  function renderReturnChart(targetId, rows, title, benchmarkSymbol, mode) {
+  async function renderReturnChart(targetId, rows, title, benchmarkSymbol, mode) {
     const holder = document.getElementById(targetId);
     if (!holder) return;
-
-    if (activeCharts[targetId]) {
-      try { activeCharts[targetId].destroy(); } catch (_) {}
-      delete activeCharts[targetId];
-      holder.innerHTML = "";
-    }
 
     const ordered = [...rows].reverse();
     const chartRows = buildRowsByMode(ordered, mode);
@@ -941,11 +979,11 @@
     const options = {
       series: [
         {
-          name: mode === "cumulative" ? "단순 누적" : "단순 수익률",
+          name: mode === "cumulative" ? "?⑥닚 ?꾩쟻" : "?⑥닚 ?섏씡瑜?,
           data: m1Data
         },
         {
-          name: mode === "cumulative" ? "시간가중 누적" : "시간가중 수익률",
+          name: mode === "cumulative" ? "?쒓컙媛以??꾩쟻" : "?쒓컙媛以??섏씡瑜?,
           data: m2Data
         },
         {
@@ -1011,9 +1049,7 @@
       }
     };
 
-    const chart = new ApexCharts(holder, options);
-    chart.render();
-    activeCharts[targetId] = chart;
+    await renderApexChartWithLifecycle(targetId, options);
   }
 
   const startInput = document.getElementById("chart-start-date");
@@ -1041,14 +1077,8 @@
     yearly: [],
   };
 
-  function renderFxChart(payload) {
+  async function renderFxChart(payload) {
     if (!fxChartHolder) return;
-
-    if (activeCharts["fx-chart"]) {
-      try { activeCharts["fx-chart"].destroy(); } catch (_) {}
-      delete activeCharts["fx-chart"];
-      fxChartHolder.innerHTML = "";
-    }
     const rows = payload?.rows || [];
     if (!rows.length) {
       fxChartHolder.innerHTML = '<div class="small">No FX data</div>';
@@ -1110,9 +1140,7 @@
       }
     };
 
-    const chart = new ApexCharts(fxChartHolder, options);
-    chart.render();
-    activeCharts["fx-chart"] = chart;
+    await renderApexChartWithLifecycle("fx-chart", options);
   }
 
   async function loadFxHistoryAndRender() {
@@ -1191,7 +1219,7 @@
     benchmarkPrefetch[symbol] = benchmarkPayload;
   }
 
-  function renderFilteredCharts() {
+  async function renderFilteredCharts() {
     const startVal = startInput.value;
     const endVal = endInput.value;
     const daily = filterRowsByRange(chartPayload.daily, startVal, endVal);
@@ -1208,11 +1236,11 @@
     const monthlyMerged = attachBenchmark(monthly, bmMonthly);
     const yearlyMerged = attachBenchmark(yearly, bmYearly);
 
-    renderReturnChart("chart-daily", dailyMerged, "Daily Return %", benchmarkPayload.symbol, chartMode);
-    renderReturnChart("chart-weekly", weeklyMerged, "Weekly Return %", benchmarkPayload.symbol, chartMode);
-    renderReturnChart("chart-monthly", monthlyMerged, "Monthly Return %", benchmarkPayload.symbol, chartMode);
-    renderReturnChart("chart-yearly", yearlyMerged, "Yearly Return %", benchmarkPayload.symbol, chartMode);
-    renderDistributionChart(
+    await renderReturnChart("chart-daily", dailyMerged, "Daily Return %", benchmarkPayload.symbol, chartMode);
+    await renderReturnChart("chart-weekly", weeklyMerged, "Weekly Return %", benchmarkPayload.symbol, chartMode);
+    await renderReturnChart("chart-monthly", monthlyMerged, "Monthly Return %", benchmarkPayload.symbol, chartMode);
+    await renderReturnChart("chart-yearly", yearlyMerged, "Yearly Return %", benchmarkPayload.symbol, chartMode);
+    await renderDistributionChart(
       {
         daily: dailyMerged,
         weekly: weeklyMerged,
@@ -1221,8 +1249,8 @@
       },
       chartMode,
     );
-    renderClosedTradeDistribution(closedTradePayload, startVal, endVal);
-    renderClosedTradeReturnDistribution(closedTradeReturnPayload, startVal, endVal);
+    await renderClosedTradeDistribution(closedTradePayload, startVal, endVal);
+    await renderClosedTradeReturnDistribution(closedTradeReturnPayload, startVal, endVal);
 
     const bmPointCount = dailyMerged.filter((row) => safeNum(row.benchmark_return_pct) !== null).length;
     rangeMeta.textContent = `Mode: ${modeLabel(chartMode)} | Benchmark: ${benchmarkPayload.symbol || "N/A"} | Benchmark daily points: ${bmPointCount} | Daily: ${daily.length} / Weekly: ${weekly.length} / Monthly: ${monthly.length} / Yearly: ${yearly.length}`;
@@ -1239,10 +1267,10 @@
       const prefetchedMsg = prefetched && prefetched.error ? ` (prefetch: ${prefetched.error})` : "";
       rangeError.textContent = `Benchmark load failed: ${err.message}${prefetchedMsg}`;
     }
-    renderFilteredCharts();
+    await renderFilteredCharts();
   }
 
-  rangeForm.addEventListener("submit", (e) => {
+  rangeForm.addEventListener("submit", async (e) => {
     e.preventDefault();
     rangeError.textContent = "";
 
@@ -1252,15 +1280,15 @@
       rangeError.textContent = "Start Date must be earlier than or equal to End Date.";
       return;
     }
-    renderFilteredCharts();
+    await renderFilteredCharts();
   });
 
-  resetButton.addEventListener("click", () => {
+  resetButton.addEventListener("click", async () => {
     const bounds = collectDateBounds(chartPayload);
     startInput.value = bounds.minDate || "";
     endInput.value = bounds.maxDate || "";
     rangeError.textContent = "";
-    renderFilteredCharts();
+    await renderFilteredCharts();
   });
 
   benchmarkSelect.addEventListener("change", async () => {
@@ -1268,17 +1296,17 @@
   });
 
   modeButtons.forEach((btn) => {
-    btn.addEventListener("click", () => {
+    btn.addEventListener("click", async () => {
       chartMode = btn.dataset.mode === "cumulative" ? "cumulative" : "period";
       updateModeButtons();
-      renderFilteredCharts();
+      await renderFilteredCharts();
     });
   });
-  distGranularity?.addEventListener("change", () => renderFilteredCharts());
-  distMethod?.addEventListener("change", () => renderFilteredCharts());
-  fxLoadButton?.addEventListener("click", () => loadFxHistoryAndRender());
-  fxCurrencySelect?.addEventListener("change", () => loadFxHistoryAndRender());
-  fxDaysSelect?.addEventListener("change", () => loadFxHistoryAndRender());
+  distGranularity?.addEventListener("change", () => { void renderFilteredCharts(); });
+  distMethod?.addEventListener("change", () => { void renderFilteredCharts(); });
+  fxLoadButton?.addEventListener("click", () => { void loadFxHistoryAndRender(); });
+  fxCurrencySelect?.addEventListener("change", () => { void loadFxHistoryAndRender(); });
+  fxDaysSelect?.addEventListener("change", () => { void loadFxHistoryAndRender(); });
 
   // Handle theme changes to dynamically switch ApexCharts themes
   window.addEventListener("theme-change", (e) => {
@@ -1315,7 +1343,7 @@
   startInput.value = bounds.minDate || "";
   endInput.value = bounds.maxDate || "";
   updateModeButtons();
-  loadFxHistoryAndRender();
-  loadBenchmarkAndRender();
+  void loadFxHistoryAndRender();
+  void loadBenchmarkAndRender();
 </script>
 {% endblock %}

@@ -19,8 +19,8 @@
 - Runtime backup: complete
 - Friend-server service migration: complete
 - Local browser acceptance: complete
-- Cloudflare Tunnel and DNS: complete
-- External acceptance and reboot recovery: planned
+- External acceptance: complete
+- Reboot recovery: planned
 
 ## Evidence
 
@@ -122,5 +122,22 @@
   - `terminal.trading-journal.work`: HTTP 307
   - `betawavve.xyz`: HTTP 303
 - **Note:** No credential file JSON paths, private keys, or actual tokens are logged.
+
+### 2026-06-21T08:26:00Z - Task 8 (External Browser Acceptance / Human-Assisted Verification)
+- **Verification Method:** Human-Assisted Verification (Explicitly marked as non-automatic)
+- **Outcome:** PASS
+- **Verified Areas:**
+  - `https://tjgyu.site/access` and Admin login: PASS
+  - `/journal`, `/portfolio`, and `/stats` pages: PASS (rendered successfully)
+  - Latest transaction data (up to 2026-06-19) and associated uploaded chart images: PASS (displayed normally)
+  - 8 ApexCharts canvas containers: Count is exactly 1 initially and remains exactly 1 after 2 theme transitions (no duplication).
+  - Theme-specific chart colors: Correctly adjusted on theme toggling.
+  - Browser console errors: 0 new errors detected.
+  - Data integrity safety:
+    - Opening and canceling the trade edit modal: PASS (no data changed).
+    - Opening and canceling the image upload modal: PASS (no data changed).
+  - UX Feedback: Modal UX has minor usability/convenience issues, but they do not block deployment. Tracked for future improvements.
+- **Note:** All actual secrets, tokens, password hashes, and database transaction values are excluded from logs.
+
 
 

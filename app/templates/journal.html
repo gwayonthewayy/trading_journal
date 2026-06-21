@@ -2111,7 +2111,7 @@
     function setQuickAttachStatus(message, isError = false) {
       if (!quickAttachStatus) return;
       quickAttachStatus.textContent = message || "";
-      quickAttachStatus.style.color = isError ? "#a52a2a" : "";
+      quickAttachStatus.style.color = isError ? "var(--danger)" : "";
     }
 
     async function uploadImageAndGetUrl(file) {
@@ -2537,7 +2537,6 @@
 
 </script>
 {% endblock %}
-
 
 
 

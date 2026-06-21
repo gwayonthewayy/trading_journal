@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="theme-color" content="#1f5473" />
+  <meta id="theme-color-meta" name="theme-color" content="" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <title>{{ title or "Trade Journal" }}</title>
@@ -13,6 +13,13 @@
     (function() {
       const savedTheme = localStorage.getItem("tj-theme") || "dark";
       document.documentElement.setAttribute("data-theme", savedTheme);
+      window.syncBrowserThemeColor = () => {
+        const meta = document.getElementById("theme-color-meta");
+        if (!meta) return;
+        const color = getComputedStyle(document.documentElement).getPropertyValue("--surface-opaque").trim();
+        if (color) meta.setAttribute("content", color);
+      };
+      window.syncBrowserThemeColor();
     })();
   </script>
 </head>
@@ -150,6 +157,7 @@
           const current = document.documentElement.getAttribute("data-theme") || "dark";
           const next = current === "dark" ? "light" : "dark";
           document.documentElement.setAttribute("data-theme", next);
+          window.syncBrowserThemeColor?.();
           localStorage.setItem("tj-theme", next);
           updateIcon(next);
           // Dispatch event so active charts (e.g. ApexCharts) can redraw under the new theme color
@@ -162,4 +170,3 @@
   {% block scripts %}{% endblock %}
 </body>
 </html>
-

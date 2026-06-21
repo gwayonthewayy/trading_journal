@@ -943,7 +943,7 @@ summary {
   left: 0;
   z-index: 35;
   width: 248px;
-  border: 1px solid #b8c9d9;
+  border: 1px solid var(--table-border-strong);
   border-radius: 12px;
   background: var(--el-bg);
   box-shadow: 0 14px 28px rgba(20, 32, 43, 0.16);
@@ -1260,15 +1260,21 @@ summary {
   position: relative;
   width: 100%;
   overflow-x: auto;
+  overflow-y: hidden;
   border: 1px solid var(--line);
   border-radius: 12px;
   background: var(--table-bg);
 }
 
-.chart-wrap svg {
+.chart-wrap > svg {
   width: 100%;
   min-width: 760px;
   display: block;
+}
+
+.chart-wrap > .apexcharts-canvas {
+  width: 100% !important;
+  min-width: 760px;
 }
 
 .chart-wrap.has-hover-tip .chart-hover-node {
@@ -1390,10 +1396,10 @@ summary {
 .install-banner-inner {
   max-width: 1240px;
   margin: 8px auto 0;
-  border: 1px solid #b8cbe0;
+  border: 1px solid var(--line-strong);
   border-radius: 12px;
-  background: linear-gradient(150deg, #f7fbff 0%, #eef6ff 100%);
-  box-shadow: 0 6px 14px rgba(20, 32, 43, 0.08);
+  background: linear-gradient(150deg, var(--surface-opaque) 0%, var(--surface-soft) 100%);
+  box-shadow: var(--glass-shadow);
   padding: 10px 12px;
 }
 

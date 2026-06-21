@@ -2,7 +2,7 @@
 {% block page_header %}
 <section class="page-head">
   <h1>Performance Stats</h1>
-  <p>Method 1? ?⑥닚 ?먯궛?鍮??섏씡瑜? Method 2???낆텧湲??쒖젏??媛以묓븳 ?먮낯(base) ?鍮??섏씡瑜좎엯?덈떎.</p>
+  <p>Method 1은 단순 자산대비 수익률, Method 2는 입출금 시점을 가중한 자본(base) 대비 수익률입니다.</p>
 </section>
 {% endblock %}
 
@@ -69,7 +69,7 @@
 <section class="card">
   <div class="card-head">
     <h3>Chart Range Filter</h3>
-    <p>湲곌컙怨?踰ㅼ튂留덊겕瑜?諛붽퓭 ?섏씡瑜?怨≪꽑??鍮꾧탳?⑸땲??</p>
+    <p>기간과 벤치마크를 바꿔 수익률 곡선을 비교합니다.</p>
   </div>
   <form id="chart-range-form">
     <div class="form-row">
@@ -106,25 +106,25 @@
 
 <section class="card">
   <h3>Return Chart (Daily)</h3>
-  <p class="small">X: 湲곌컙, Y: ?섏씡瑜?%). 二쇳솴(?⑥닚), 泥?줉(?쒓컙媛以?, ?뱀깋(踰ㅼ튂留덊겕)</p>
+  <p class="small">X: 기간, Y: 수익률(%). 주황(단순), 청록(시간가중), 녹색(벤치마크)</p>
   <div id="chart-daily" class="chart-wrap"></div>
 </section>
 
 <section class="card">
   <h3>Return Chart (Weekly)</h3>
-  <p class="small">X: 湲곌컙, Y: ?섏씡瑜?%). 二쇳솴(?⑥닚), 泥?줉(?쒓컙媛以?, ?뱀깋(踰ㅼ튂留덊겕)</p>
+  <p class="small">X: 기간, Y: 수익률(%). 주황(단순), 청록(시간가중), 녹색(벤치마크)</p>
   <div id="chart-weekly" class="chart-wrap"></div>
 </section>
 
 <section class="card">
   <h3>Return Chart (Monthly)</h3>
-  <p class="small">X: 湲곌컙, Y: ?섏씡瑜?%). 二쇳솴(?⑥닚), 泥?줉(?쒓컙媛以?, ?뱀깋(踰ㅼ튂留덊겕)</p>
+  <p class="small">X: 기간, Y: 수익률(%). 주황(단순), 청록(시간가중), 녹색(벤치마크)</p>
   <div id="chart-monthly" class="chart-wrap"></div>
 </section>
 
 <section class="card">
   <h3>Return Chart (Yearly)</h3>
-  <p class="small">X: 湲곌컙, Y: ?섏씡瑜?%). 二쇳솴(?⑥닚), 泥?줉(?쒓컙媛以?, ?뱀깋(踰ㅼ튂留덊겕)</p>
+  <p class="small">X: 기간, Y: 수익률(%). 주황(단순), 청록(시간가중), 녹색(벤치마크)</p>
   <div id="chart-yearly" class="chart-wrap"></div>
 </section>
 
@@ -159,7 +159,7 @@
 <section class="card">
   <div class="card-head">
     <h3>Return Distribution</h3>
-    <p>???섏씡瑜?媛믪쓽 遺꾪룷瑜?援ш컙蹂?鍮덈룄濡??뺤씤?⑸땲??</p>
+    <p>내 수익률 값의 분포를 구간별 빈도로 확인합니다.</p>
   </div>
   <div class="form-row">
     <label>
@@ -174,8 +174,8 @@
     <label>
       Metric
       <select id="dist-method">
-        <option value="return_method1_pct">Method 1 (?⑥닚)</option>
-        <option value="return_method2_pct" selected>Method 2 (?쒓컙媛以?</option>
+        <option value="return_method1_pct">Method 1 (단순)</option>
+        <option value="return_method2_pct" selected>Method 2 (시간가중)</option>
       </select>
     </label>
   </div>
@@ -186,7 +186,7 @@
 <section class="card">
   <div class="card-head">
     <h3>Closed Trade PnL Distribution</h3>
-    <p>紐⑤뱺 醫낅즺(SELL) 嫄곕옒???ㅽ쁽?먯씡 遺꾪룷瑜??먮룞 援ш컙?쇰줈 ?쒖떆?⑸땲??</p>
+    <p>모든 종료(SELL) 거래의 실현손익 분포를 자동 구간으로 표시합니다.</p>
   </div>
   <div class="dist-layout">
     <div>
@@ -213,7 +213,7 @@
 <section class="card">
   <div class="card-head">
     <h3>Closed Trade Return Distribution</h3>
-    <p>紐⑤뱺 醫낅즺(SELL) 嫄곕옒??媛쒕퀎 ?섏씡瑜??먯떎瑜?遺꾪룷(%)瑜??쒖떆?⑸땲??</p>
+    <p>모든 종료(SELL) 거래의 개별 수익률/손실률 분포(%)를 표시합니다.</p>
   </div>
   <div class="dist-layout">
     <div>
@@ -592,6 +592,29 @@
   const activeCharts = {};
   const chartRenderStates = {};
 
+  function getChartThemeColors() {
+    const styles = getComputedStyle(document.documentElement);
+    const readToken = (name) => styles.getPropertyValue(name).trim();
+    return {
+      text: readToken("--subtle"),
+      grid: readToken("--line-strong"),
+      legend: readToken("--text"),
+      primary: readToken("--primary"),
+      primaryInk: readToken("--primary-ink"),
+      accent: readToken("--accent"),
+      positive: readToken("--ok"),
+    };
+  }
+
+  function getChartSeriesColors(holderId, chartTheme) {
+    if (holderId === "chart-distribution") return [chartTheme.primaryInk];
+    if (holderId === "chart-closed-dist" || holderId === "chart-closed-return-dist") {
+      return [chartTheme.primaryInk, chartTheme.accent];
+    }
+    if (holderId === "fx-chart") return [chartTheme.primary];
+    return [chartTheme.accent, chartTheme.primary, chartTheme.positive];
+  }
+
   function warnChartLifecycle(holderId, message, error) {
     if (error) {
       console.warn(`[ApexCharts:${holderId}] ${message}`, error);
@@ -730,8 +753,9 @@
     const counts = bins.map(b => b.count);
 
     const isDark = document.documentElement.getAttribute("data-theme") === "dark";
-    const textThemeColor = isDark ? "#94a3b8" : "#64748b";
-    const gridThemeColor = isDark ? "#334155" : "#e2e8f0";
+    const chartTheme = getChartThemeColors();
+    const textThemeColor = chartTheme.text;
+    const gridThemeColor = chartTheme.grid;
 
     const options = {
       series: [
@@ -746,7 +770,8 @@
         toolbar: { show: false },
         background: 'transparent'
       },
-      colors: ['#215561'],
+      dataLabels: { enabled: false },
+      colors: getChartSeriesColors("chart-distribution", chartTheme),
       plotOptions: {
         bar: {
           borderRadius: 4,
@@ -808,7 +833,7 @@
       .filter((value) => value !== null);
 
     if (!values.length) {
-      summary.textContent = "?좏깮??湲곌컙???좏슚??醫낅즺 嫄곕옒 ?곗씠?곌? ?놁뒿?덈떎.";
+      summary.textContent = "선택한 기간에 유효한 종료 거래 데이터가 없습니다.";
       holder.innerHTML = '<div class="small">No closed-trade data</div>';
       clearDistributionTableBody(tableBodyId);
       return;
@@ -855,8 +880,9 @@
 
     const categories = bins.map(b => rangeFormatter(b.low, b.high));
     const isDark = document.documentElement.getAttribute("data-theme") === "dark";
-    const textThemeColor = isDark ? "#94a3b8" : "#64748b";
-    const gridThemeColor = isDark ? "#334155" : "#e2e8f0";
+    const chartTheme = getChartThemeColors();
+    const textThemeColor = chartTheme.text;
+    const gridThemeColor = chartTheme.grid;
 
     const options = {
       series: [
@@ -877,7 +903,8 @@
         toolbar: { show: false },
         background: 'transparent'
       },
-      colors: ['#215561', '#f97316'],
+      dataLabels: { enabled: false },
+      colors: getChartSeriesColors(holderId, chartTheme),
       stroke: {
         width: [0, 2.5],
         curve: 'smooth'
@@ -914,7 +941,7 @@
         intersect: false
       },
       legend: {
-        labels: { colors: isDark ? '#f1f5f9' : '#1e293b' }
+        labels: { colors: chartTheme.legend }
       }
     };
 
@@ -973,17 +1000,18 @@
     const bmData = chartRows.map(r => safeNum(r.benchmark_plot_return_pct));
 
     const isDark = document.documentElement.getAttribute("data-theme") === "dark";
-    const textThemeColor = isDark ? "#94a3b8" : "#64748b";
-    const gridThemeColor = isDark ? "#334155" : "#e2e8f0";
+    const chartTheme = getChartThemeColors();
+    const textThemeColor = chartTheme.text;
+    const gridThemeColor = chartTheme.grid;
 
     const options = {
       series: [
         {
-          name: mode === "cumulative" ? "?⑥닚 ?꾩쟻" : "?⑥닚 ?섏씡瑜?,
+          name: mode === "cumulative" ? "단순 누적" : "단순 수익률",
           data: m1Data
         },
         {
-          name: mode === "cumulative" ? "?쒓컙媛以??꾩쟻" : "?쒓컙媛以??섏씡瑜?,
+          name: mode === "cumulative" ? "시간가중 누적" : "시간가중 수익률",
           data: m2Data
         },
         {
@@ -998,7 +1026,8 @@
         zoom: { enabled: false },
         background: 'transparent'
       },
-      colors: ['#f97316', '#38bdf8', '#10b981'],
+      dataLabels: { enabled: false },
+      colors: getChartSeriesColors(targetId, chartTheme),
       fill: {
         type: 'gradient',
         gradient: {
@@ -1045,7 +1074,7 @@
       legend: {
         position: 'top',
         horizontalAlign: 'right',
-        labels: { colors: isDark ? '#f1f5f9' : '#1e293b' }
+        labels: { colors: chartTheme.legend }
       }
     };
 
@@ -1090,8 +1119,9 @@
     const data = rows.map(r => Number(r.rate));
 
     const isDark = document.documentElement.getAttribute("data-theme") === "dark";
-    const textThemeColor = isDark ? "#94a3b8" : "#64748b";
-    const gridThemeColor = isDark ? "#334155" : "#e2e8f0";
+    const chartTheme = getChartThemeColors();
+    const textThemeColor = chartTheme.text;
+    const gridThemeColor = chartTheme.grid;
 
     const options = {
       series: [
@@ -1106,7 +1136,8 @@
         toolbar: { show: false },
         background: 'transparent'
       },
-      colors: ['#38bdf8'],
+      dataLabels: { enabled: false },
+      colors: getChartSeriesColors("fx-chart", chartTheme),
       stroke: {
         curve: 'smooth',
         width: 2.5
@@ -1311,16 +1342,17 @@
   // Handle theme changes to dynamically switch ApexCharts themes
   window.addEventListener("theme-change", (e) => {
     const nextTheme = e.detail.theme;
-    const isDark = nextTheme === "dark";
-    const textThemeColor = isDark ? "#94a3b8" : "#64748b";
-    const gridThemeColor = isDark ? "#334155" : "#e2e8f0";
-    const legendColor = isDark ? "#f1f5f9" : "#1e293b";
+    const chartTheme = getChartThemeColors();
+    const textThemeColor = chartTheme.text;
+    const gridThemeColor = chartTheme.grid;
+    const legendColor = chartTheme.legend;
 
     Object.keys(activeCharts).forEach((key) => {
       const chart = activeCharts[key];
       if (chart) {
         chart.updateOptions({
           theme: { mode: nextTheme },
+          colors: getChartSeriesColors(key, chartTheme),
           grid: { borderColor: gridThemeColor },
           xaxis: {
             labels: { style: { colors: textThemeColor } }

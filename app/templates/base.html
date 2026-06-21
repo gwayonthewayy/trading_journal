@@ -34,12 +34,12 @@
         <span class="brand-mark">TJ</span>
         <span>
           <strong>Trade Journal</strong>
-          <small>Execution and Review</small>
+          <small class="hidden-mobile">Execution and Review</small>
         </span>
       </a>
 
       {% if role %}
-        <nav class="main-nav" aria-label="Primary">
+        <nav class="main-nav pc-only" aria-label="Primary">
           <a href="/journal" class="{% if path.startswith('/journal') %}active{% endif %}">Journal</a>
           <a href="/portfolio" class="{% if path.startswith('/portfolio') %}active{% endif %}">Portfolio</a>
           <a href="/stats" class="{% if path.startswith('/stats') %}active{% endif %}">Stats</a>
@@ -49,29 +49,62 @@
           {% endif %}
         </nav>
       {% else %}
-        <div></div>
+        <div class="pc-only"></div>
       {% endif %}
 
       <div class="topbar-actions">
-        <button id="theme-toggle-btn" class="theme-toggle-btn" aria-label="Toggle Dark Mode" type="button" style="border:1px solid var(--line); background:var(--surface); border-radius:999px; cursor:pointer; font-size:1rem; padding:6px 10px; display:flex; align-items:center; justify-content:center; gap:6px; color:var(--text); transition:160ms ease;">
-          <span class="theme-toggle-icon">🌙</span>
-        </button>
-        {% if role == "admin" %}
-          <nav class="export-nav" aria-label="Export">
-            <a href="/export/events.csv">Events CSV</a>
-            <a href="/export/lots.csv">Lots CSV</a>
-            <a href="/export/sell_allocations.csv">Alloc CSV</a>
-          </nav>
-        {% endif %}
         {% if role %}
-          <div class="auth-pill">{{ role|upper }}</div>
-          <form method="post" action="/logout" class="logout-form">
-            <button type="submit" class="secondary">Logout</button>
-          </form>
+        <button id="user-menu-trigger" class="mobile-only secondary" aria-controls="user-menu-drawer" aria-expanded="false" aria-label="Open User Menu" style="padding: 6px 10px; border-radius: 8px;">
+          <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
+        </button>
         {% endif %}
+
+        <div id="user-menu-drawer" class="user-menu-drawer">
+          <div class="drawer-overlay" id="user-menu-overlay"></div>
+          <div class="drawer-content" role="dialog" aria-modal="true" aria-label="User Menu">
+            <div class="drawer-header mobile-only">
+              <strong>메뉴</strong>
+              <button type="button" id="user-menu-close" aria-label="Close User Menu" class="secondary" style="padding: 4px 8px; border:none; background:transparent;">✕</button>
+            </div>
+            <div class="drawer-body">
+              <button id="theme-toggle-btn" class="theme-toggle-btn" aria-label="Toggle Dark Mode" type="button" style="border:1px solid var(--line); background:var(--surface); border-radius:999px; cursor:pointer; font-size:1rem; padding:6px 10px; display:flex; align-items:center; justify-content:center; gap:6px; color:var(--text); transition:160ms ease;">
+                <span class="theme-toggle-icon">🌙</span>
+              </button>
+              {% if role == "admin" %}
+                <nav class="export-nav" aria-label="Export">
+                  <a href="/broker-sync" class="mobile-only {% if path.startswith('/broker-sync') %}active{% endif %}">KIS Sync</a>
+                  <a href="/export/events.csv">Events CSV</a>
+                  <a href="/export/lots.csv">Lots CSV</a>
+                  <a href="/export/sell_allocations.csv">Alloc CSV</a>
+                </nav>
+              {% endif %}
+              {% if role %}
+                <div class="auth-pill">{{ role|upper }}</div>
+                <span id="username-slot" hidden></span>
+                <form method="post" action="/logout" class="logout-form">
+                  <button type="submit" class="secondary">Logout</button>
+                </form>
+              {% endif %}
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   </header>
+
+  {% if role %}
+  <nav class="bottom-nav mobile-only">
+    <a href="/journal" {% if path.startswith('/journal') %}class="active" aria-current="page"{% endif %}>
+      매매일지
+    </a>
+    <a href="/portfolio" {% if path.startswith('/portfolio') %}class="active" aria-current="page"{% endif %}>
+      포트폴리오
+    </a>
+    <a href="/stats" {% if path.startswith('/stats') %}class="active" aria-current="page"{% endif %}>
+      분석
+    </a>
+  </nav>
+  {% endif %}
   <div id="install-banner" class="install-banner" hidden>
     <div class="install-banner-inner">
       <strong>Trade Journal을 홈화면에 추가</strong>
@@ -167,6 +200,38 @@
     })();
   </script>
   <script src="/static/apexcharts.min.js"></script>
+  <script>
+    (() => {
+      const trigger = document.getElementById('user-menu-trigger');
+      const drawer = document.getElementById('user-menu-drawer');
+      const closeBtn = document.getElementById('user-menu-close');
+      const overlay = document.getElementById('user-menu-overlay');
+
+      if (!trigger || !drawer) return;
+
+      function openMenu() {
+        drawer.classList.add('is-open');
+        trigger.setAttribute('aria-expanded', 'true');
+        if (closeBtn) closeBtn.focus();
+      }
+
+      function closeMenu() {
+        drawer.classList.remove('is-open');
+        trigger.setAttribute('aria-expanded', 'false');
+        trigger.focus();
+      }
+
+      trigger.addEventListener('click', openMenu);
+      if (closeBtn) closeBtn.addEventListener('click', closeMenu);
+      if (overlay) overlay.addEventListener('click', closeMenu);
+
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && drawer.classList.contains('is-open')) {
+          closeMenu();
+        }
+      });
+    })();
+  </script>
   {% block scripts %}{% endblock %}
 </body>
 </html>

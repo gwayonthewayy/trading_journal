@@ -10,14 +10,14 @@
 ## Agent handoff
 
 - Design commit: `54e52e1`
-- Current owner: Codex (Task 3 completed)
+- Current owner: Gemini (Task 5 completed)
 - Execution model: sequential Codex/Gemini handoffs; never concurrent edits
 
 ## Phase status
 
 - Git integration: complete
 - Runtime backup: complete
-- Friend-server service migration: planned
+- Friend-server service migration: complete
 - Local browser acceptance: planned
 - Cloudflare Tunnel and DNS: planned
 - External acceptance and reboot recovery: planned
@@ -54,3 +54,12 @@
   - `/opt/gyu/backups/20260621T034933Z/uploads`: directory, mode=2775, owner=gyu123:gyuedit
   - `/opt/gyu/backups/20260621T034933Z/trading-journal.service`: 353 bytes, mode=600, owner=gyu123:gyuedit
 - **Note:** No hashes of secrets, environment variable values, or database row contents were captured or recorded.
+
+### 2026-06-21T03:56:53Z - Task 5 (Web Service Migration)
+- **Service Name:** `trading-journal.service`
+- **Status:** enabled & active (running)
+- **Process Working Directory:** `/opt/gyu/trading_journal` (verified via service environment/command)
+- **Executable Path:** `/opt/gyu/trading_journal/.venv/bin/uvicorn`
+- **Local HTTP Status Check:** `/access` returned HTTP 200
+- **Rollback Backup Link:** `/opt/gyu/backups/trading-journal-predeploy-current`
+- **Tests Execution:** PASS (35 tests run, 0 failures, 0 errors under virtualenv before service migration)

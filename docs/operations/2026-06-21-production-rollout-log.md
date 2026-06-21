@@ -16,7 +16,7 @@
 ## Phase status
 
 - Git integration: complete
-- Runtime backup: planned
+- Runtime backup: complete
 - Friend-server service migration: planned
 - Local browser acceptance: planned
 - Cloudflare Tunnel and DNS: planned
@@ -43,3 +43,14 @@
   ```
 - **Outcome:** PASS (35 tests run, 0 failures, 0 errors)
 - **Note:** No runtime files (`.env.runtime`, `data/db.sqlite`, `data/uploads/`) were staged or modified.
+
+### 2026-06-21T03:49:33Z - Task 4 (Pre-deployment Runtime Backup)
+- **Backup Directory Path:** `/opt/gyu/backups/20260621T034933Z`
+- **Stable Link Path:** `/opt/gyu/backups/trading-journal-predeploy-current`
+- **SQLite Database Integrity:** `ok`
+- **File Metadata (no secret content):**
+  - `/opt/gyu/backups/20260621T034933Z/db.sqlite`: 339,968 bytes, mode=644, owner=gyu123:gyuedit
+  - `/opt/gyu/backups/20260621T034933Z/.env.runtime`: 390 bytes, mode=600, owner=gyu123:gyuedit
+  - `/opt/gyu/backups/20260621T034933Z/uploads`: directory, mode=2775, owner=gyu123:gyuedit
+  - `/opt/gyu/backups/20260621T034933Z/trading-journal.service`: 353 bytes, mode=600, owner=gyu123:gyuedit
+- **Note:** No hashes of secrets, environment variable values, or database row contents were captured or recorded.

@@ -56,6 +56,8 @@ def _normalize_ticker(raw: str, currency: str) -> str:
         digits = "".join(ch for ch in text if ch.isdigit())
         if digits:
             return digits.zfill(5)
+    if currency == "JPY" and text.endswith(".T"):
+        return text[:-2]
     return text
 
 
@@ -65,7 +67,13 @@ def _market_currency_from_source_currency(currency: str) -> tuple[str, str] | No
         return ("US", "USD")
     if cur == "HKD":
         return ("HK", "HKD")
+    if cur == "JPY":
+        return ("JP", "JPY")
     return None
+
+
+def _exchange_from_market(market: str) -> str | None:
+    return {"HK": "HKEX", "JP": "TSE"}.get(market)
 
 
 def parse_overseas_rows(xlsx_path: Path) -> tuple[list[OverseasRow], dict[str, int]]:
@@ -343,6 +351,7 @@ def main() -> None:
             currency=currency,
             allow_nonempty_db=(args.allow_nonempty_db or idx > 0),
             dedupe_existing=dedupe_existing,
+            exchange=_exchange_from_market(market),
         )
         print(f"[{market}/{currency}] apply_done")
         for key, value in result.items():

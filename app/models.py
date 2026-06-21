@@ -10,6 +10,7 @@ from sqlmodel import Field, SQLModel
 class EventType(str, Enum):
     BUY = "BUY"
     SELL = "SELL"
+    CORPORATE_ACTION = "CORPORATE_ACTION"
     SL_UPDATE = "SL_UPDATE"
     CASHFLOW = "CASHFLOW"
     REVIEW = "REVIEW"

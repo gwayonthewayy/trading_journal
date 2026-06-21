@@ -1,14 +1,27 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="theme-color" content="#1f5473" />
+  <meta id="theme-color-meta" name="theme-color" content="" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <title>{{ title or "Trade Journal" }}</title>
   <link rel="manifest" href="/static/manifest.webmanifest" />
   <link rel="stylesheet" href="/static/style.css" />
+  <script>
+    (function() {
+      const savedTheme = localStorage.getItem("tj-theme") || "dark";
+      document.documentElement.setAttribute("data-theme", savedTheme);
+      window.syncBrowserThemeColor = () => {
+        const meta = document.getElementById("theme-color-meta");
+        if (!meta) return;
+        const color = getComputedStyle(document.documentElement).getPropertyValue("--surface-opaque").trim();
+        if (color) meta.setAttribute("content", color);
+      };
+      window.syncBrowserThemeColor();
+    })();
+  </script>
 </head>
 <body>
   {% set path = request.url.path %}
@@ -40,6 +53,9 @@
       {% endif %}
 
       <div class="topbar-actions">
+        <button id="theme-toggle-btn" class="theme-toggle-btn" aria-label="Toggle Dark Mode" type="button" style="border:1px solid var(--line); background:var(--surface); border-radius:999px; cursor:pointer; font-size:1rem; padding:6px 10px; display:flex; align-items:center; justify-content:center; gap:6px; color:var(--text); transition:160ms ease;">
+          <span class="theme-toggle-icon">🌙</span>
+        </button>
         {% if role == "admin" %}
           <nav class="export-nav" aria-label="Export">
             <a href="/export/events.csv">Events CSV</a>
@@ -122,8 +138,35 @@
         });
       }
     })();
+
+    // Dark/Light Theme Switcher Logic
+    (function() {
+      const themeBtn = document.getElementById("theme-toggle-btn");
+      if (themeBtn) {
+        const iconSpan = themeBtn.querySelector(".theme-toggle-icon");
+        const updateIcon = (theme) => {
+          if (iconSpan) {
+            iconSpan.textContent = theme === "dark" ? "🌙" : "☀️";
+          }
+        };
+        // Set initial icon based on theme
+        const currentTheme = document.documentElement.getAttribute("data-theme") || "dark";
+        updateIcon(currentTheme);
+
+        themeBtn.addEventListener("click", () => {
+          const current = document.documentElement.getAttribute("data-theme") || "dark";
+          const next = current === "dark" ? "light" : "dark";
+          document.documentElement.setAttribute("data-theme", next);
+          window.syncBrowserThemeColor?.();
+          localStorage.setItem("tj-theme", next);
+          updateIcon(next);
+          // Dispatch event so active charts (e.g. ApexCharts) can redraw under the new theme color
+          window.dispatchEvent(new CustomEvent("theme-change", { detail: { theme: next } }));
+        });
+      }
+    })();
   </script>
+  <script src="/static/apexcharts.min.js"></script>
   {% block scripts %}{% endblock %}
 </body>
 </html>
-

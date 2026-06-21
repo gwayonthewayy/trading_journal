@@ -24,8 +24,8 @@ from sqlmodel import Session, select
 
 from app.database import engine, init_db
 from app.models import Event, EventType, Lot, Symbol
-from app.schemas import BuyRequest, SellAllocationIn, SellRequest
-from app.services import _build_lot_states_from_events, create_buy, create_sell
+from app.schemas import BonusIssueRequest, BuyRequest, SellAllocationIn, SellRequest
+from app.services import _build_lot_states_from_events, create_bonus_issue, create_buy, create_sell
 
 NS = {
     "m": "http://schemas.openxmlformats.org/spreadsheetml/2006/main",
@@ -92,6 +92,17 @@ class ImportPlan:
     unmapped_names: list[str]
 
 
+@dataclass(frozen=True)
+class CorporateActionSpec:
+    source_tag: str
+    action_type: str
+    ticker: str
+    target_buy_row: int
+    effective_ts: datetime
+    additional_qty: float
+    note: str | None = None
+
+
 @dataclass
 class ExistingDedupIndex:
     event_counts: Counter[tuple[str, str, str, str]]
@@ -99,6 +110,51 @@ class ExistingDedupIndex:
     buy_lots_by_strict_key: dict[tuple[str, str, str], deque[int]]
     buy_lots_by_qp_key: dict[tuple[str, str, float, float], deque[int]]
     buy_lots_by_loose_key: dict[tuple[str, str], deque[int]]
+
+
+def load_corporate_actions(path: Path | None) -> list[CorporateActionSpec]:
+    if path is None:
+        return []
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    rows = payload.get("actions", []) if isinstance(payload, dict) else payload
+    if not isinstance(rows, list):
+        raise ValueError("corporate action manifest must contain an actions list")
+
+    actions: list[CorporateActionSpec] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            raise ValueError("corporate action entry must be an object")
+        action = CorporateActionSpec(
+            source_tag=str(row["source_tag"]).strip(),
+            action_type=str(row["action_type"]).strip().upper(),
+            ticker=str(row["ticker"]).strip().upper(),
+            target_buy_row=int(row["target_buy_row"]),
+            effective_ts=datetime.fromisoformat(str(row["effective_ts"])),
+            additional_qty=float(row["additional_qty"]),
+            note=str(row["note"]).strip() if row.get("note") else None,
+        )
+        if action.action_type != "BONUS_ISSUE":
+            raise ValueError(f"unsupported corporate action type: {action.action_type}")
+        if not action.source_tag or action.additional_qty <= 0:
+            raise ValueError("corporate action source_tag and positive quantity are required")
+        actions.append(action)
+    return sorted(actions, key=lambda item: (item.effective_ts, item.source_tag))
+
+
+def _target_buy_key(plan: ImportPlan, action: CorporateActionSpec) -> str:
+    matches = [
+        event.buy_key
+        for event in plan.events
+        if isinstance(event, PlannedBuy)
+        and event.row_no == action.target_buy_row
+        and event.ticker == action.ticker
+    ]
+    if len(matches) != 1:
+        raise ValueError(
+            f"corporate action {action.source_tag} target BUY not uniquely resolved "
+            f"for ticker={action.ticker} row={action.target_buy_row}"
+        )
+    return matches[0]
 
 
 def _col_to_num(col: str) -> int:
@@ -773,6 +829,8 @@ def apply_import_plan(
     currency: str,
     allow_nonempty_db: bool,
     dedupe_existing: bool,
+    exchange: str | None = None,
+    corporate_actions: list[CorporateActionSpec] | None = None,
 ) -> dict[str, Any]:
     init_db()
 
@@ -785,6 +843,11 @@ def apply_import_plan(
     skipped_sell_missing_lot_samples: list[dict[str, Any]] = []
     skipped_existing_buy_without_lot_map = 0
     skipped_sell_allocation_conflict = 0
+    created_corporate_action = 0
+    skipped_duplicate_corporate_action = 0
+    actions = corporate_actions or []
+    action_targets = {action.source_tag: _target_buy_key(plan, action) for action in actions}
+    action_index = 0
 
     with Session(engine) as session:
         existing_id = session.exec(select(Event.id).limit(1)).first()
@@ -807,8 +870,35 @@ def apply_import_plan(
             dedup_buy_qp = idx.buy_lots_by_qp_key
             dedup_buy_loose = idx.buy_lots_by_loose_key
 
+        def apply_action(action: CorporateActionSpec) -> None:
+            nonlocal created_corporate_action, skipped_duplicate_corporate_action
+            buy_key = action_targets[action.source_tag]
+            lot_id = buy_key_to_lot_id.get(buy_key)
+            if lot_id is None:
+                raise RuntimeError(
+                    f"corporate action {action.source_tag} target lot is unavailable"
+                )
+            result = create_bonus_issue(
+                session,
+                BonusIssueRequest(
+                    lot_id=lot_id,
+                    additional_qty=action.additional_qty,
+                    ts=action.effective_ts,
+                    source_tag=action.source_tag,
+                    note=action.note,
+                ),
+            )
+            if result["duplicate"]:
+                skipped_duplicate_corporate_action += 1
+            else:
+                created_corporate_action += 1
+
         try:
             for planned in plan.events:
+                while action_index < len(actions) and actions[action_index].effective_ts <= planned.ts:
+                    apply_action(actions[action_index])
+                    action_index += 1
+
                 if isinstance(planned, PlannedBuy):
                     if dedupe_existing:
                         key = _planned_buy_key_tuple(planned)
@@ -854,6 +944,7 @@ def apply_import_plan(
                     req = BuyRequest(
                         ticker=planned.ticker,
                         market=market,
+                        exchange=exchange,
                         currency=currency,
                         qty=planned.qty,
                         price=planned.price,
@@ -942,6 +1033,7 @@ def apply_import_plan(
                         SellRequest(
                             ticker=planned.ticker,
                             market=market,
+                            exchange=exchange,
                             currency=currency,
                             price=planned.price,
                             fee=fee_for_group,
@@ -974,6 +1066,10 @@ def apply_import_plan(
                 if sell_failed:
                     continue
 
+            while action_index < len(actions):
+                apply_action(actions[action_index])
+                action_index += 1
+
             session.commit()
         except Exception:
             session.rollback()
@@ -988,6 +1084,8 @@ def apply_import_plan(
         "skipped_sell_events_missing_lot_samples": skipped_sell_missing_lot_samples,
         "skipped_existing_buy_without_lot_map": skipped_existing_buy_without_lot_map,
         "skipped_sell_events_allocation_conflict": skipped_sell_allocation_conflict,
+        "created_corporate_action_events": created_corporate_action,
+        "skipped_duplicate_corporate_action_events": skipped_duplicate_corporate_action,
     }
 
 
@@ -1092,6 +1190,11 @@ def main() -> None:
         help="Ignore cache and rebuild Naver KR name->ticker map from API.",
     )
     parser.add_argument(
+        "--corporate-actions",
+        default=None,
+        help="Path to an explicit corporate action JSON manifest.",
+    )
+    parser.add_argument(
         "--apply",
         action="store_true",
         help="Actually write to DB. Without this flag, script runs as dry-run.",
@@ -1149,6 +1252,9 @@ def main() -> None:
                 row.ticker = fallback_matches.get(row.name)
 
     plan = build_import_plan(source_rows)
+    corporate_actions = load_corporate_actions(
+        Path(args.corporate_actions) if args.corporate_actions else None
+    )
     dedupe_existing = not args.no_dedupe_existing
 
     print(f"input_path: {input_path}")
@@ -1166,6 +1272,7 @@ def main() -> None:
     print(f"file_fifo_shortfall_rows: {len(plan.skipped_sells)}")
     print(f"skipped_sell_rows: {len(plan.skipped_sells)}")
     print(f"unmapped_names: {len(plan.unmapped_names)}")
+    print(f"corporate_actions: {len(corporate_actions)}")
 
     if plan.unmapped_names:
         print("unmapped_name_samples:")
@@ -1203,6 +1310,7 @@ def main() -> None:
         currency=str(args.currency).strip().upper(),
         allow_nonempty_db=args.allow_nonempty_db,
         dedupe_existing=dedupe_existing,
+        corporate_actions=corporate_actions,
     )
     print("apply: done")
     for key, value in result.items():

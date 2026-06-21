@@ -180,3 +180,32 @@ Before and after every server or feature change:
 2. Back up the server DB and uploads outside Git.
 3. Work on a feature branch and run the full test suite.
 4. Commit the verified result before merging to `main`.
+
+# UI/UX Modernization (2026-06-19)
+
+A comprehensive UI/UX refactoring was completed to enhance the trading journal's aesthetics and user interface flow.
+
+## Implemented Changes
+
+1. **Theme System**:
+   - Switched to HSL-based dynamic colors.
+   - Default is a dark theme (Navy/Charcoal background). A toggle button in the top bar switches to light mode.
+   - Theme preference is saved locally (`localStorage.getItem("tj-theme")`).
+   - Prevents white flash via an IIFE in `base.html` `<head>`.
+2. **Form Layout (Slide-out Drawers)**:
+   - Moved BUY, SELL, CASHFLOW, and SL_UPDATE forms to right-hand drawers (`.drawer` in CSS).
+   - Added a compact `.quick-action-bar` at the top of the Journal page with custom buttons to slide drawers open.
+   - Main page now defaults to a clean table view without showing giant forms at the top.
+3. **Data Visualization (ApexCharts)**:
+   - Removed yfinance dependency and SVG string builders in `stats.html`.
+   - Integrated `ApexCharts` CDN in `base.html`.
+   - Rendered Area/Line and Column mixed charts with smooth curves, gradients, and tooltips.
+   - Handled `theme-change` event dynamically to redraw/update charts when theme switches.
+
+## Verification
+- Run local server to view:
+  ```powershell
+  cd "D:\주식\trading_journal"
+  .\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
+  ```
+- Make sure to review `docs/superpowers/plans/2026-06-19-ui-ux-modernization-design.md` for technical design details.

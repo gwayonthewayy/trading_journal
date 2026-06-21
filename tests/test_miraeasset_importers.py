@@ -76,5 +76,43 @@ class OverseasImporterAggregationTests(unittest.TestCase):
         self.assertEqual(aggregated, {"created_buy_events": 3})
 
 
+class CorporateActionManifestTests(unittest.TestCase):
+    def test_manifest_resolves_target_buy_row(self):
+        from scripts.import_miraeasset_kr_xlsx import (
+            CorporateActionSpec,
+            ImportPlan,
+            PlannedBuy,
+            _target_buy_key,
+        )
+
+        plan = ImportPlan(
+            events=[
+                PlannedBuy(
+                    buy_key="buy-57",
+                    row_no=57,
+                    ts=datetime(2026, 5, 20, 9, 1, 54),
+                    ticker="183300",
+                    name="코미코",
+                    qty=52,
+                    price=144_300,
+                    fee=0,
+                )
+            ],
+            skipped_sells=[],
+            unmapped_names=[],
+        )
+        action = CorporateActionSpec(
+            source_tag="komico_bonus_20260527",
+            action_type="BONUS_ISSUE",
+            ticker="183300",
+            target_buy_row=57,
+            effective_ts=datetime(2026, 6, 15, 0, 0),
+            additional_qty=52,
+            note="1:1 bonus issue",
+        )
+
+        self.assertEqual(_target_buy_key(plan, action), "buy-57")
+
+
 if __name__ == "__main__":
     unittest.main()

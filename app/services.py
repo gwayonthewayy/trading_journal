@@ -24,6 +24,7 @@ from sqlmodel import Session, select
 from app.database import DB_PATH
 from app.models import Event, EventType, Lot, SellAllocation, Setting, Symbol, TradeGroup
 from app.schemas import (
+    BonusIssueRequest,
     BuyRequest,
     CashflowRequest,
     DuplicateCheckRequest,
@@ -115,6 +116,11 @@ ACTIONABLE_MANDATORY_FIELDS = (
     "trend_template_pass",
 )
 DEFAULT_MAX_PLANNED_RISK_PCT = 8.0
+
+
+def _is_counted_journal_event_type(event_type: str | EventType | None) -> bool:
+    value = event_type.value if isinstance(event_type, EventType) else str(event_type or "").upper()
+    return value not in {EventType.SL_UPDATE.value, EventType.CORPORATE_ACTION.value}
 
 MONTHLY_CHECK_METRICS: list[dict[str, str]] = [
     {"key": "trade_count", "label": "Trades", "format": "count"},
@@ -305,6 +311,8 @@ def _currency_symbol(currency: str | None) -> str:
         return "₩"
     if normalized == "HKD":
         return "HK$"
+    if normalized == "JPY":
+        return "¥"
     if normalized:
         return f"{normalized} "
     return ""
@@ -503,6 +511,15 @@ def _build_lot_states_from_events(
                 lot_state["qty_open"] -= alloc.qty_sold
             continue
 
+        if event.type == EventType.CORPORATE_ACTION and event.lot_id is not None:
+            lot_state = lot_states.get(event.lot_id)
+            if lot_state is None:
+                continue
+            lot_state["qty_open"] += event.qty or 0.0
+            if event.price is not None:
+                lot_state["entry_price"] = event.price
+            continue
+
         if event.type == EventType.SL_UPDATE and event.lot_id is not None:
             lot_state = lot_states.get(event.lot_id)
             if lot_state is None:
@@ -543,6 +560,15 @@ def _assert_non_negative_lot_states(session: Session) -> None:
                         detail=f"historical allocation exceeds open qty for lot {alloc.lot_id}",
                     )
                 lot_qty[alloc.lot_id] = max(0.0, next_qty)
+            continue
+
+        if event.type == EventType.CORPORATE_ACTION and event.lot_id is not None:
+            if event.lot_id not in lot_qty:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"corporate action references unknown lot {event.lot_id}",
+                )
+            lot_qty[event.lot_id] += event.qty or 0.0
 
 
 def _sync_lot_snapshots_from_events(session: Session) -> None:
@@ -557,6 +583,7 @@ def _sync_lot_snapshots_from_events(session: Session) -> None:
             lot.qty_open = 0.0
         else:
             lot.qty_open = max(0.0, state["qty_open"])
+            lot.entry_price = state["entry_price"]
             lot.sl = state["sl"]
             lot.tp = state["tp"]
         session.add(lot)
@@ -637,6 +664,73 @@ def create_buy(session: Session, req: BuyRequest) -> dict[str, Any]:
     _sync_lot_snapshots_from_events(session)
 
     return {"lot_id": lot.id, "event_id": event.id}
+
+
+def create_bonus_issue(session: Session, req: BonusIssueRequest) -> dict[str, Any]:
+    source_tag = req.source_tag.strip()
+    marker = f"corporate_action={source_tag}"
+    duplicate = session.exec(
+        select(Event).where(
+            Event.type == EventType.CORPORATE_ACTION,
+            Event.note.contains(marker),
+        )
+    ).first()
+    if duplicate is not None:
+        return {
+            "duplicate": True,
+            "event_id": duplicate.id,
+            "lot_id": duplicate.lot_id,
+            "new_qty": None,
+            "new_entry_price": duplicate.price,
+        }
+
+    lot = session.get(Lot, req.lot_id)
+    if lot is None:
+        raise HTTPException(status_code=404, detail="lot not found")
+
+    event_ts = _normalize_optional_ts(req.ts)
+    if event_ts is None or event_ts < lot.opened_at:
+        raise HTTPException(status_code=400, detail="bonus issue must not precede lot opening")
+
+    states = _build_lot_states_from_events(session, up_to_ts=event_ts)
+    state = states.get(req.lot_id)
+    if state is None or state["qty_open"] <= 0:
+        raise HTTPException(status_code=400, detail="bonus issue requires an open lot")
+
+    old_qty = float(state["qty_open"])
+    old_entry_price = float(state["entry_price"])
+    new_qty = old_qty + req.additional_qty
+    new_entry_price = (old_qty * old_entry_price) / new_qty
+    detail = marker if not req.note else f"{marker};{req.note.strip()}"
+
+    event = Event(
+        ts=event_ts,
+        type=EventType.CORPORATE_ACTION,
+        ticker=lot.ticker,
+        market=lot.market,
+        exchange=lot.exchange,
+        currency=lot.currency,
+        fx_rate_to_base=lot.fx_rate_to_base,
+        trade_group_id=lot.trade_group_id,
+        lot_id=lot.id,
+        qty=req.additional_qty,
+        price=new_entry_price,
+        fee=0.0,
+        reason="BONUS_ISSUE",
+        note=detail,
+    )
+    session.add(event)
+    session.flush()
+    _assert_non_negative_lot_states(session)
+    _sync_lot_snapshots_from_events(session)
+
+    return {
+        "duplicate": False,
+        "event_id": event.id,
+        "lot_id": lot.id,
+        "new_qty": new_qty,
+        "new_entry_price": new_entry_price,
+    }
 
 
 def _compute_realized_pnl_from_allocations(
@@ -2221,6 +2315,29 @@ def build_journal(
                 risk_delta += lot_delta
                 risk_delta_details.append(f"lot#{alloc.lot_id} {lot_delta:+.2f}")
 
+        elif event.type == EventType.CORPORATE_ACTION and event.lot_id is not None:
+            lot_state = lot_states.get(event.lot_id)
+            if lot_state is not None:
+                before = _calc_open_risk_from_values(
+                    entry_price=lot_state["entry_price"],
+                    sl=lot_state["sl"],
+                    qty_open=lot_state["qty_open"],
+                    fx_rate_to_base=lot_state.get("fx_rate_to_base", 1.0),
+                    est_exit_fee_rate=est_exit_fee_rate,
+                )
+                lot_state["qty_open"] += event.qty or 0.0
+                if event.price is not None:
+                    lot_state["entry_price"] = event.price
+                after = _calc_open_risk_from_values(
+                    entry_price=lot_state["entry_price"],
+                    sl=lot_state["sl"],
+                    qty_open=lot_state["qty_open"],
+                    fx_rate_to_base=lot_state.get("fx_rate_to_base", 1.0),
+                    est_exit_fee_rate=est_exit_fee_rate,
+                )
+                risk_delta = after - before
+                risk_delta_details.append(f"lot#{event.lot_id} {risk_delta:+.2f}")
+
         elif event.type == EventType.SL_UPDATE and event.lot_id is not None:
             lot_state = lot_states.get(event.lot_id)
             if lot_state is not None:
@@ -2429,7 +2546,7 @@ def build_journal(
 
     filtered_count = len(rows_filtered)
     event_count_ex_sl_update = sum(
-        1 for row in rows_filtered if str(row.get("type") or "").upper() != EventType.SL_UPDATE.value
+        1 for row in rows_filtered if _is_counted_journal_event_type(row.get("type"))
     )
     total_pages = max(1, math.ceil(filtered_count / page_size)) if filtered_count else 1
     if page > total_pages:
@@ -2531,6 +2648,9 @@ def _quote_symbol_candidates(ticker: str, market: str | None) -> list[str]:
             candidates.append(normalized_ticker)
         elif "." not in normalized_ticker:
             candidates.append(f"{normalized_ticker}.HK")
+    elif normalized_market == "JP":
+        base = normalized_ticker[:-2] if normalized_ticker.endswith(".T") else normalized_ticker
+        candidates.append(f"{base}.T")
     elif normalized_market == "KR":
         if normalized_ticker.endswith(".KS") or normalized_ticker.endswith(".KQ"):
             candidates.append(normalized_ticker)
@@ -2796,7 +2916,13 @@ def _fetch_latest_quote_from_yfinance_symbol(symbol: str) -> float | None:
         "?range=5d&interval=1d&includePrePost=false&events=div%2Csplits"
     )
     try:
-        with urlopen(yahoo_url, timeout=8) as response:
+        req = Request(
+            yahoo_url,
+            headers={
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            },
+        )
+        with urlopen(req, timeout=8) as response:
             payload = json.loads(response.read().decode("utf-8"))
         chart = payload.get("chart") if isinstance(payload, dict) else None
         results = chart.get("result") if isinstance(chart, dict) else None

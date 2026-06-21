@@ -19,7 +19,7 @@
 - Runtime backup: complete
 - Friend-server service migration: complete
 - Local browser acceptance: complete
-- Cloudflare Tunnel and DNS: planned
+- Cloudflare Tunnel and DNS: complete
 - External acceptance and reboot recovery: planned
 
 ## Evidence
@@ -103,4 +103,24 @@
   - New browser console errors detected: 0.
   - Active configuration files (`.env.runtime`) and security credentials are unchanged.
 - **Note:** All actual secrets, tokens, password hashes, and database values are excluded from logs, terminal history, and chat.
+
+### 2026-06-21T08:05:00Z - Task 7 (Cloudflared Service Installation and Verification)
+- **New Service:** `cloudflared.service` (configured under user `gyu123` and group `gyuedit`, pointing to `/usr/bin/cloudflared` binary and `/etc/cloudflared/config.yml` configuration)
+- **Legacy Service:** `cloudflared-trading-journal.service` (running unaffected under user `soso6079` pointing to `/opt/bin/cloudflared` binary)
+- **Status Checks:**
+  - `cloudflared-trading-journal.service`: active & enabled
+  - `cloudflared.service`: active & enabled
+  - `trading-journal.service`: active & enabled
+- **Tunnel Connectivity:**
+  - New `trading-journal` tunnel (`263386ee-cdcc-4b4c-9a57-dc04e0bae4fb`): Connected (2 active connections)
+- **DNS and HTTP Verification:**
+  - `https://tjgyu.site/access` returned HTTP 200 with correct page contents
+  - Port 8000 bound strictly to `127.0.0.1:8000` (not exposed globally)
+- **Legacy Domains Routing Verification:**
+  - `trading-journal.work/access`: HTTP 200
+  - `reports.trading-journal.work`: HTTP 200
+  - `terminal.trading-journal.work`: HTTP 307
+  - `betawavve.xyz`: HTTP 303
+- **Note:** No credential file JSON paths, private keys, or actual tokens are logged.
+
 

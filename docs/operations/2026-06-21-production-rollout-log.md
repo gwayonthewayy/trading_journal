@@ -18,7 +18,7 @@
 - Git integration: complete
 - Runtime backup: complete
 - Friend-server service migration: complete
-- Local browser acceptance: planned
+- Local browser acceptance: complete
 - Cloudflare Tunnel and DNS: planned
 - External acceptance and reboot recovery: planned
 
@@ -88,4 +88,19 @@
   - Verified uploads directory matched the staged manifest (25 items).
   - Retained `.env.runtime` unmodified.
 - **Note:** All actual secrets, tokens, and database values are excluded from logs, terminal history, and chat.
+
+### 2026-06-21T06:26:00Z - Task 6 (Local Browser Acceptance / Human-Assisted Verification)
+- **Verification Method:** Human-Assisted Verification (Explicitly marked as non-automatic)
+- **Outcome:** PASS
+- **Verified Areas:**
+  - `/journal` page renders successfully with latest event data.
+  - `/portfolio` page renders successfully.
+  - `/stats` page renders successfully.
+  - Total event count verified: 1,181 events.
+  - Latest transaction data (up to 2026-06-19) and associated uploaded chart images display correctly.
+  - 8 ApexCharts canvas containers verified (Count is exactly 1 initially, and remains exactly 1 after first and second theme toggles).
+  - Chart theme colors adjust normally on theme toggling.
+  - New browser console errors detected: 0.
+  - Active configuration files (`.env.runtime`) and security credentials are unchanged.
+- **Note:** All actual secrets, tokens, password hashes, and database values are excluded from logs, terminal history, and chat.
 

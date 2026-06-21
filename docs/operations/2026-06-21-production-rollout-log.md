@@ -20,7 +20,7 @@
 - Friend-server service migration: complete
 - Local browser acceptance: complete
 - External acceptance: complete
-- Reboot recovery: planned
+- Reboot recovery: deferred (pending)
 
 ## Evidence
 
@@ -138,6 +138,19 @@
     - Opening and canceling the image upload modal: PASS (no data changed).
   - UX Feedback: Modal UX has minor usability/convenience issues, but they do not block deployment. Tracked for future improvements.
 - **Note:** All actual secrets, tokens, password hashes, and database transaction values are excluded from logs.
+
+## Current Deployment Status
+
+- **Web Service Status**: `trading-journal.service` is active and enabled, running from `/opt/gyu/trading_journal`.
+- **New Tunnel Status**: `cloudflared.service` is active and enabled, routing `https://tjgyu.site` to the local backend.
+- **Operational URL**: `https://tjgyu.site` is normally operating and publicly accessible.
+- **Validation Status**: Task 6 (Local) and Task 8 (External) Human-Assisted verifications are both PASS.
+- **Data Status**: SQLite database and uploads directory successfully restored from `runtime_bundle_latest.zip`.
+- **Legacy Service Boundary**: The pre-existing `cloudflared-trading-journal.service` has been left running and unaffected, as it is required to route other active websites (`trading-journal.work`, `reports`, `terminal`, `betawavve`).
+- **Pending Tasks**:
+  - Reboot recovery validation: **Deferred** (pending scheduled server maintenance to avoid disrupting active user sessions and agent processes).
+  - KIS activation: **Separate step** (not enabled under current scope).
+
 
 
 

@@ -84,3 +84,19 @@ Note: The intended systemd unit template is `deploy/trading-journal.service.exam
 - KR high source: Naver daily high.
 - US/HK high source: Yahoo daily high.
 
+## 8) Cloudflare Tunnel & Reboot Recovery Status
+
+- **Operational Path**: `/opt/gyu/trading_journal`
+- **Public URL**: `https://tjgyu.site`
+- **New Tunnel Service**: `cloudflared.service` (runs under user `gyu123` and group `gyuedit`, pointing to `/etc/cloudflared/config.yml` and tunnel UUID `263386ee-cdcc-4b4c-9a57-dc04e0bae4fb`)
+- **Legacy Service Boundary**:
+  - The pre-existing `cloudflared-trading-journal.service` (running under user `soso6079`) manages 4 active legacy sites (`trading-journal.work`, `reports`, `terminal`, `betawavve`).
+  - **CRITICAL**: Do **NOT** modify, stop, or disable the `cloudflared-trading-journal.service` or its `/home/soso6079/.cloudflared/config.yml` config.
+- **Reboot Recovery status**:
+  - Currently **DEFERRED (PENDING)**.
+  - Reason: The shared server runs active long-term workloads (Codex/Grok agents in `soso6079`'s tmux sessions) and database services run inside the `kis-runtime` LXD container (whose autostart has not yet been verified post-reboot).
+  - Rebooting requires prior coordination with the server owner.
+- **KIS Integration**:
+  - The KIS client and synchronization architecture are ready, but activation/execution of KIS sync runs is a **separate step** that is not currently enabled.
+
+

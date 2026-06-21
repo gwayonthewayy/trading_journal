@@ -84,38 +84,25 @@ Read `<TJ_ADMIN_TOKEN>` from `.env.runtime`. Do not paste the real token into co
 
 ## Friend Server
 
-Main path:
+- **Operational Path**: `/opt/gyu/trading_journal`
+- **Public URL**: `https://tjgyu.site`
+- **Active Web Service**: `trading-journal.service`
+  - WorkingDirectory: `/opt/gyu/trading_journal`
+  - ExecStart: `/opt/gyu/trading_journal/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000`
+- **New Tunnel Service**: `cloudflared.service`
+  - Runs under user `gyu123` and group `gyuedit`.
+  - Service file: `/etc/systemd/system/cloudflared.service`
+  - ExecStart: `/usr/bin/cloudflared tunnel --config /etc/cloudflared/config.yml run 263386ee-cdcc-4b4c-9a57-dc04e0bae4fb`
+- **Legacy Service Boundary**:
+  - The pre-existing `cloudflared-trading-journal.service` (running under user `soso6079`) manages 4 active legacy sites (`trading-journal.work`, `reports`, `terminal`, `betawavve`).
+  - **CRITICAL**: Do **NOT** modify, stop, or disable `cloudflared-trading-journal.service` or its `/home/soso6079/.cloudflared/config.yml` config.
+- **Reboot Recovery status**:
+  - Currently **DEFERRED (PENDING)**.
+  - Reason: The shared server runs active long-term workloads (Codex/Grok agents in `soso6079`'s tmux sessions) and database services run inside the `kis-runtime` LXD container (whose autostart has not yet been verified post-reboot).
+  - Rebooting requires prior coordination with the server owner.
+- **KIS Integration**:
+  - The KIS client and synchronization architecture are ready, but activation/execution of KIS sync runs is a **separate step** that is not currently enabled.
 
-```bash
-cd /opt/gyu/trading_journal
-```
-
-The intended production service should point to this path, not the older `/opt/trading_journal` path.
-
-Expected systemd service settings:
-
-```ini
-WorkingDirectory=/opt/gyu/trading_journal
-EnvironmentFile=/opt/gyu/trading_journal/.env.runtime
-ExecStart=/home/gyu123/.local/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
-```
-
-After service edits, the server admin should run:
-
-```bash
-sudo systemctl daemon-reload
-sudo systemctl restart trading-journal
-sudo systemctl status trading-journal --no-pager -l
-```
-
-Check local service:
-
-```bash
-ss -ltnp | grep :8000
-curl -s http://127.0.0.1:8000/access | head
-```
-
-Cloudflare Tunnel is expected to route to `http://127.0.0.1:8000`.
 
 ## Data Transfer
 

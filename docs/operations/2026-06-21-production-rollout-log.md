@@ -63,3 +63,14 @@
 - **Local HTTP Status Check:** `/access` returned HTTP 200
 - **Rollback Backup Link:** `/opt/gyu/backups/trading-journal-predeploy-current`
 - **Tests Execution:** PASS (35 tests run, 0 failures, 0 errors under virtualenv before service migration)
+
+### 2026-06-21T04:15:00Z - Security Remediation (Secrets Rotation)
+- **Actions Performed:**
+  - Rotated `TJ_SIGNING_SECRET` with a new cryptographically secure random 32-byte hex secret.
+  - Rotated `TJ_VIEWER_TOKEN` and `TJ_ADMIN_TOKEN` with new cryptographically secure random url-safe base64 tokens.
+  - Incremented `TJ_AUTH_VERSION` to invalidate all active and previous session cookies.
+  - Rotated `TJ_ADMIN_PASSWORD_HASH` using Argon2id via virtualenv python.
+  - Restarted `trading-journal.service` successfully (status: active).
+  - Verified local HTTP response for `/access` returned HTTP 200.
+  - Verified previous sessions are invalidated due to the incremented `auth_version`.
+- **Note:** All actual rotated secrets, tokens, password hashes, and database values are excluded from logs, terminal history, and chat.

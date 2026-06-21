@@ -1,227 +1,257 @@
 # Phase A Responsive UX/UI Detailed Implementation Plan
 
-This document defines the step-by-step implementation plan for **Phase A: Responsive UX/UI** of the Trade Journal modernization. 
-
 > [!IMPORTANT]
 > **No functional UI changes or operational code changes** are implemented in this step. This file serves strictly as the executable blueprint (Step A0) to guide subsequent development iterations.
 > **Verification Boundary:** Automated browser tests (Playwright) are currently unavailable in the environment. All visual layouts, touch targets, and mobile viewport tests are designated under `USER MANUAL CHECK` or `ANTI IDE REQUIRED`.
 
+## Goal
+Implement a responsive user interface foundation that adapts seamlessly to mobile devices (<= 768px) and desktop environments, without altering backend logic or introducing third-party UI/toast libraries. The mobile view will prioritize bottom navigation, drawer-based interactions, and simplified data presentations while retaining the current powerful data grid for PC users.
+
+## Architecture
+- **Responsive Layout Strategy:** Use CSS Variables and Media Queries (`max-width: 768px`) for layout switching.
+- **Mobile Navigation:** Bottom fixed navigation (`<nav class="bottom-nav">`) replacing the top header links.
+- **Drawers/Sheets:** Use existing CSS-based drawer mechanics (`.drawer`) for filters, menus, and edits instead of modals.
+- **Components:** Maintain a singleton-canvas approach for ApexCharts to prevent rendering duplication.
+- **State Management:** Use existing minimal JS and Jinja2 templates without relying on heavy frontend frameworks.
+
+## Tech Stack
+- **Frontend:** HTML5, CSS3 (Vanilla, CSS Variables), Vanilla JavaScript
+- **Backend:** FastAPI, Jinja2
+- **Testing:** `unittest` with in-memory SQLite (`sqlite://`), manual browser validation
+
 ---
 
 ## 1. Safety and Isolation Boundaries
-
-To protect the server environment, real trading data, and active systemd configurations, the following boundaries must be strictly enforced:
-
-### 1.1 Operational Files Protection
 - Do **NOT** modify, stage, or commit `.env.runtime`.
-- Do **NOT** read or parse secrets from `.env.runtime` into plaintext stdout or logs.
-- Do **NOT** modify or delete `data/db.sqlite` or any files in `data/uploads/` during testing and execution.
-
-### 1.2 Test-Time Database Isolation
-- All unit and integration tests must run against an **in-memory SQLite database** using `sqlite://` with `StaticPool` to prevent side effects on `data/db.sqlite`.
-- API route testing via FastAPI `TestClient` must override the `get_session` dependency:
-  ```python
-  from app.database import get_session
-  app.dependency_overrides[get_session] = get_test_session
-  ```
-
-### 1.3 Test-Time Uploads Isolation
-- Tests involving image attachment or deletion must use a mock uploads path configured using Python's `tempfile.TemporaryDirectory`.
-
----
-
-## 2. Phase A Detailed Steps
-
-```mermaid
-graph TD
-    A0[A0: Design & Plan] --> A1[A1: Responsive App Shell]
-    A1 --> A2[A2: Journal Workflow]
-    A2 --> A3[A3: Analytics Simplification]
-    A3 --> A4[A4: Portfolio Simplification]
-    A4 --> A5[A5: Phase A Verification & Release]
-```
+- Do **NOT** read or parse secrets from `.env.runtime`.
+- Do **NOT** modify `data/db.sqlite` or `data/uploads/`.
+- All tests must use `sqlite://` via `StaticPool` and override `get_session` via `app.dependency_overrides`.
 
 ---
 
 ## Step A1: Responsive App Shell
 
 ### Objectives
-- Create a unified responsive navigation layout:
-  - **PC View:** Retain compact top header navigation.
-  - **Mobile View (<= 720px):** 
-    - Header height capped at 64px, containing only the "TJ" mark, current page title, and a **User Menu Trigger**.
-    - Primary navigation moves to a fixed bottom navigation bar (height: 56px) showing: `매매일지` (Journal), `포트폴리오` (Portfolio), `분석` (Stats).
-- Consolidate auxiliary actions into a single **User Menu Drawer** on mobile:
-  - Theme toggle (Light/Dark).
-  - KIS Sync trigger.
-  - CSV exports (`Events`, `Lots`, `Allocations`).
-  - Active role pill (`ADMIN` / `VIEWER`).
-  - Logout form.
-  - *Note: Leave a blank metadata slot to easily show the actual username in Phase B.*
+- Unified responsive navigation layout (768px threshold).
+- Header height capped at `64px` max.
+- Bottom navigation bar: `매매일지`, `포트폴리오`, `분석`.
+- User Menu Drawer: `ADMIN`/`VIEWER` role pill. Hidden `username` DOM slot. No placeholder/non-functional UI.
+- Use Korean terms for periods and menus.
+- Ensure `safe-area-inset` is covered in CSS tests.
 
-### Files to Modify
-- [app/templates/base.html](file:///opt/gyu/trading_journal/app/templates/base.html)
-- [app/static/style.css](file:///opt/gyu/trading_journal/app/static/style.css)
+### Implementation Checklist (2~5 minute tasks)
+- [ ] Create `tests/test_app_shell.py` with failing assertions.
+- [ ] Update `app/static/style.css`: Add `@media (max-width: 768px)`, define `height: 64px` for header.
+- [ ] Update `app/static/style.css`: Add `.bottom-nav` styles including `padding-bottom: env(safe-area-inset-bottom)`.
+- [ ] Update `app/templates/base.html`: Move PC navigation to a conditional or responsive hidden block.
+- [ ] Update `app/templates/base.html`: Add `<nav class="bottom-nav">` with items (매매일지, 포트폴리오, 분석).
+- [ ] Update `app/templates/base.html`: Add `#user-menu-drawer`.
+- [ ] Update `app/templates/base.html`: Add `ADMIN`/`VIEWER` role pill and hidden `username` slot in `#user-menu-drawer`.
+- [ ] Run test and ensure it passes.
+- [ ] `USER MANUAL CHECK`: Open on mobile (viewport <= 768px) and verify.
 
-### Files to Create / Test
-- `tests/test_app_shell.py` (Asserts structural HTML tags, viewport meta, bottom-nav list items, and user menu container presence via Jinja context rendering).
+### TDD & Minimum Implementation
+**Test File:** `tests/test_app_shell.py`
+```python
+import unittest
+from fastapi.testclient import TestClient
+from app.main import app
 
-### TDD Order & Command
-1. Write assertions in `tests/test_app_shell.py` checking for the existence of `<nav class="bottom-nav">` and `#user-menu-drawer`.
-2. Run tests (expect failure):
-   ```bash
-   .venv/bin/python -m unittest tests.test_app_shell
-   ```
-3. Implement HTML markup in `base.html` and styles in `style.css`.
-4. Run tests (expect pass).
+class TestAppShell(unittest.TestCase):
+    def setUp(self):
+        self.client = TestClient(app)
 
-### Commit boundary
-- `feat(ui): implement responsive app shell with mobile bottom nav and user menu`
+    def test_mobile_elements_exist(self):
+        response = self.client.get("/")
+        html = response.text
+        self.assertIn('class="bottom-nav"', html)
+        self.assertIn('매매일지', html)
+        self.assertIn('id="user-menu-drawer"', html)
+        self.assertIn('style="display: none;" id="username-slot"', html)
+```
+**Run Command:** `.venv/bin/python -m unittest tests.test_app_shell`
+**Expected Failure:** `AssertionError: 'class="bottom-nav"' not found in html`
+**Min Impl:**
+```html
+<nav class="bottom-nav">
+  <a href="/journal">매매일지</a>
+  <a href="/portfolio">포트폴리오</a>
+  <a href="/stats">분석</a>
+</nav>
+<div id="user-menu-drawer" class="drawer">
+  <span class="role-pill">{{ user_role }}</span>
+  <span id="username-slot" style="display: none;"></span>
+</div>
+```
 
-### Verification Checkpoints
-- `USER MANUAL CHECK`: Open on mobile (viewport <= 720px) and verify:
-  - Header is <= 64px.
-  - Bottom navigation is fixed at the bottom, safe-area-inset is respected, and does not overlay contents.
-  - User Menu drawer slides open smoothly and contains all consolidated controls.
+### Stop & Commit Point
+- **Commit Message:** `feat(ui): implement responsive app shell (<=768px) with bottom nav and user menu`
+- **Wait for User Approval:** 🔴 **STOP HERE AND ASK USER TO PROCEED TO A2**
 
 ---
 
 ## Step A2: Journal Workflow
 
 ### Objectives
-- Maintain compact spreadsheet-style layout on PC.
-- Implement **Trade Cards** for Mobile View:
-  - Suppress the `#journal-table` on mobile.
-  - Display list of `journal-mobile-card` items showing: Ticker, Name, Action Type badge, Qty/Price, PnL metrics, Reason, and Action buttons (Attach/Edit/Delete).
-- Consolidate search and filter tools into a collapsible **Filter Sheet** (Drawer) on mobile.
-- Implement a floating **Quick Record FAB (`+` Button)** on mobile which opens a menu to choose BUY / SELL / CASHFLOW / SL drawers.
-- Refactor and stabilize the `#drawer-edit` (Edit Drawer):
-  - Handle numeric inputs safely (ensure valid zero inputs are not cleared).
-  - Ensure Escape key listener triggers `closeAllDrawers()`.
-  - Validate form values on submission and display inline validation messages.
+- Maintain spreadsheet layout on PC.
+- Mobile View: Suppress `#journal-table`, show `journal-mobile-card` list.
+- Implement drawers for Filters, Pagination, Edit, Delete on mobile vs desktop.
+- Floating Quick Record FAB for new entries.
 
-### Files to Modify
-- [app/templates/journal.html](file:///opt/gyu/trading_journal/app/templates/journal.html)
-- [app/static/style.css](file:///opt/gyu/trading_journal/app/static/style.css)
+### Implementation Checklist (2~5 minute tasks)
+- [ ] Create `tests/test_journal_ui.py` with assertions for mobile cards, filter drawer, pagination drawer, edit drawer, delete drawer.
+- [ ] Update `app/static/style.css`: Add display toggles for `#journal-table` and `.journal-mobile-card` based on `768px` media query.
+- [ ] Update `app/templates/journal.html`: Implement `#filter-drawer`, `#pagination-drawer`, `#edit-drawer`, `#delete-drawer`.
+- [ ] Update `app/templates/journal.html`: Add loop to render `.journal-mobile-card` items.
+- [ ] Update `app/templates/journal.html`: Add `.fab-quick-record` button.
+- [ ] Run test and ensure it passes.
+- [ ] `USER MANUAL CHECK`: Verify cards layout, FAB interaction, and drawers (Filter, Pagination, Edit, Delete).
 
-### Files to Create / Test
-- `tests/test_journal_ui.py` (Unit tests verifying HTML variables injection, card structure generation, and edit drawer input validation logic).
+### TDD & Minimum Implementation
+**Test File:** `tests/test_journal_ui.py`
+```python
+import unittest
+from fastapi.testclient import TestClient
+from app.main import app
 
-### TDD Order & Command
-1. Create `tests/test_journal_ui.py` checking for the existence of `journal-mobile-cards` block and FAB container.
-2. Run tests:
-   ```bash
-   .venv/bin/python -m unittest tests.test_journal_ui
-   ```
-3. Modify `journal.html` and `style.css`.
-4. Run tests.
+class TestJournalUI(unittest.TestCase):
+    def setUp(self):
+        self.client = TestClient(app)
 
-### Commit boundary
-- `feat(ui): add mobile trade cards, quick action FAB, and validate edit drawer`
+    def test_journal_mobile_elements(self):
+        response = self.client.get("/journal")
+        html = response.text
+        self.assertIn('class="journal-mobile-card"', html)
+        self.assertIn('id="filter-drawer"', html)
+        self.assertIn('id="pagination-drawer"', html)
+```
+**Run Command:** `.venv/bin/python -m unittest tests.test_journal_ui`
+**Expected Failure:** `AssertionError: 'class="journal-mobile-card"' not found in html`
+**Min Impl:**
+```html
+<div class="journal-mobile-card">...</div>
+<div id="filter-drawer" class="drawer">...</div>
+```
 
-### Verification Checkpoints
-- `USER MANUAL CHECK`: 
-  - Verify cards are responsive and do not cause horizontal overflow.
-  - Test input fields in Edit Drawer with a zero value (e.g. fee = 0) and verify it registers as `0` instead of blank.
-  - Press `Escape` key inside the Edit Drawer and check if it closes.
+### Stop & Commit Point
+- **Commit Message:** `feat(ui): add mobile trade cards, drawers for filter/pagination/edit/delete, and FAB`
+- **Wait for User Approval:** 🔴 **STOP HERE AND ASK USER TO PROCEED TO A3**
 
 ---
 
 ## Step A3: Analytics Simplification
 
 ### Objectives
-- Simplify metrics terminology for user accessibility:
-  - **M2** -> `기간 수익률` (Primary return metric).
-  - **M1** -> Hide under an expandable `고급 지표` accordion with textual definitions.
-  - **Realized Return** -> `확정 수익률`.
-- Consolidate charts:
-  - Merge the 4 separate daily/weekly/monthly/yearly SVG/ApexCharts containers into a single dynamic chart container (`#stats-primary-chart`).
-  - Add a segmented switcher button control: `Daily | Weekly | Monthly | Yearly` to dynamically trigger ApexCharts series updates (`chart.updateSeries`) via API fetch or preloaded dataset logic.
-- Integrate **Monthly Check** directly into Stats page as a secondary tab view to eliminate page clutter.
+- Simplify metrics terminology (`기간 수익률`, `확정 수익률`, hide M1 in `고급 지표`).
+- Merge 4 separate daily/weekly/monthly/yearly charts into `#stats-primary-chart`.
+- Add switcher: `Daily | Weekly | Monthly | Yearly`.
+- Integrate Monthly Check view as a secondary tab.
 
-### Files to Modify
-- [app/templates/stats.html](file:///opt/gyu/trading_journal/app/templates/stats.html)
-- [app/static/style.css](file:///opt/gyu/trading_journal/app/static/style.css)
+### Implementation Checklist (2~5 minute tasks)
+- [ ] Create `tests/test_stats_ui.py` asserting `#stats-primary-chart` and new translated labels.
+- [ ] Update `app/templates/stats.html`: Rename M2 to `기간 수익률`, Realized Return to `확정 수익률`.
+- [ ] Update `app/templates/stats.html`: Wrap M1 in an accordion `<details class="고급-지표">`.
+- [ ] Update `app/templates/stats.html`: Replace multiple charts with `#stats-primary-chart` and a switcher group.
+- [ ] Update `app/templates/stats.html`: Integrate Monthly Check content.
+- [ ] Update `app/static/style.css`: Add styles for switcher and tabs.
+- [ ] Run test and ensure it passes.
+- [ ] `USER MANUAL CHECK`: Toggle switcher options and ensure only one ApexCharts instance renders.
 
-### Files to Create / Test
-- `tests/test_stats_ui.py` (Asserts correct translation labels and single-canvas configuration on template generation).
+### TDD & Minimum Implementation
+**Test File:** `tests/test_stats_ui.py`
+```python
+import unittest
+from fastapi.testclient import TestClient
+from app.main import app
 
-### TDD Order & Command
-1. Write assertions in `tests/test_stats_ui.py` to ensure legacy charts (Daily/Weekly/Monthly/Yearly) do not have separate hardcoded SVG/ApexCharts containers, and verify `기간 수익률` copy.
-2. Run tests:
-   ```bash
-   .venv/bin/python -m unittest tests.test_stats_ui
-   ```
-3. Update `stats.html` HTML markup, Javascript, and `style.css`.
-4. Run tests.
+class TestStatsUI(unittest.TestCase):
+    def setUp(self):
+        self.client = TestClient(app)
 
-### Commit boundary
-- `feat(ui): simplify stats metrics and consolidate return charts under switcher`
+    def test_stats_elements(self):
+        response = self.client.get("/stats")
+        html = response.text
+        self.assertIn('기간 수익률', html)
+        self.assertIn('확정 수익률', html)
+        self.assertIn('id="stats-primary-chart"', html)
+```
+**Run Command:** `.venv/bin/python -m unittest tests.test_stats_ui`
+**Expected Failure:** `AssertionError: '기간 수익률' not found`
+**Min Impl:**
+```html
+<div>기간 수익률</div>
+<div id="stats-primary-chart"></div>
+```
 
-### Verification Checkpoints
-- `USER MANUAL CHECK`:
-  - Toggle between `Daily`, `Weekly`, `Monthly`, and `Yearly` options on Stats chart. Verify only one ApexCharts canvas is rendered.
-  - Verify theme change (dark/light toggle) properly updates the primary unified chart's colors and axes indicators.
+### Stop & Commit Point
+- **Commit Message:** `feat(ui): simplify stats metrics and consolidate charts into a single canvas`
+- **Wait for User Approval:** 🔴 **STOP HERE AND ASK USER TO PROCEED TO A4**
 
 ---
 
 ## Step A4: Portfolio Simplification
 
 ### Objectives
-- PC View retains detailed spreadsheet lots matrix.
-- Mobile View displays compact **Ticker Cards**:
-  - Highlights open value, cost, unrealized PnL, and open risk.
-  - Shows lots details inside a responsive **accordion list** using collapsible components.
-- Stabilize the refresh workflow:
-  - Display explicit UI states during `/api/market-data/refresh` execution: Loading (spinner/stretching), Success (toast notification), Stale (data age warnings), and Failure (detailed error alerts).
+- Mobile View: Compact Ticker Cards showing open value, cost, unrealized PnL, open risk.
+- Lots details in an accordion list inside the card.
+- Refresh workflow loading states.
 
-### Files to Modify
-- [app/templates/portfolio.html](file:///opt/gyu/trading_journal/app/templates/portfolio.html)
-- [app/static/style.css](file:///opt/gyu/trading_journal/app/static/style.css)
+### Implementation Checklist (2~5 minute tasks)
+- [ ] Create `tests/test_portfolio_ui.py` asserting `.portfolio-ticker-card` and loading state elements.
+- [ ] Update `app/templates/portfolio.html`: Add `.portfolio-ticker-card` container.
+- [ ] Update `app/templates/portfolio.html`: Add collapsible `<details>` for lots.
+- [ ] Update `app/templates/portfolio.html`: Add loading indicator elements (spinner/stretching).
+- [ ] Update `app/static/style.css`: Add `.portfolio-ticker-card` styles.
+- [ ] Run test and ensure it passes.
+- [ ] `USER MANUAL CHECK`: Verify portfolio cards collapse correctly and check refresh loading indicators.
 
-### Files to Create / Test
-- `tests/test_portfolio_ui.py` (Verifies state tags, mobile layout structure, and lot list rendering).
+### TDD & Minimum Implementation
+**Test File:** `tests/test_portfolio_ui.py`
+```python
+import unittest
+from fastapi.testclient import TestClient
+from app.main import app
 
-### TDD Order & Command
-1. Create `tests/test_portfolio_ui.py` to test template rendering with empty and active portfolios.
-2. Run tests:
-   ```bash
-   .venv/bin/python -m unittest tests.test_portfolio_ui
-   ```
-3. Edit `portfolio.html` and styles.
-4. Run tests.
+class TestPortfolioUI(unittest.TestCase):
+    def setUp(self):
+        self.client = TestClient(app)
 
-### Commit boundary
-- `feat(ui): implement mobile portfolio ticker cards and refresh loading states`
+    def test_portfolio_elements(self):
+        response = self.client.get("/portfolio")
+        html = response.text
+        self.assertIn('class="portfolio-ticker-card"', html)
+```
+**Run Command:** `.venv/bin/python -m unittest tests.test_portfolio_ui`
+**Expected Failure:** `AssertionError: 'class="portfolio-ticker-card"' not found`
+**Min Impl:**
+```html
+<div class="portfolio-ticker-card">
+  <details><summary>Lots</summary>...</details>
+</div>
+```
 
-### Verification Checkpoints
-- `USER MANUAL CHECK`:
-  - Verify portfolio lot tables wrap correctly or collapse gracefully under card accordion.
-  - Click "Refresh Price/FX" and verify loading indicators display correctly prior to reload.
+### Stop & Commit Point
+- **Commit Message:** `feat(ui): implement mobile portfolio ticker cards and refresh indicators`
+- **Wait for User Approval:** 🔴 **STOP HERE AND ASK USER TO PROCEED TO A5**
 
 ---
 
-## Step Step A5: Verification & Production Release
+## Step A5: Verification & Production Release
 
 ### Objectives
-- Run all project tests excluding `tests/test_japan_market.py`.
-- Conduct exhaustive visual inspects across various viewport sizes (360px, 390px, 768px, 1440px).
-- Verify git staged area is pristine of any credentials or database artifacts.
+- Complete regression suite (excluding `test_japan_market.py`).
+- No git dirtiness or leaked `.env.runtime`.
+- Visual cross-device testing.
 
 ### Commands to Run
-1. Discover and execute all safe test modules:
-   ```bash
-   mapfile -t test_modules < <(find tests -maxdepth 1 -type f -name 'test_*.py' ! -name 'test_japan_market.py' -printf '%f\n' | sed -e 's/\.py$//' -e 's#^#tests.#' | sort)
-   .venv/bin/python -m unittest -v "${test_modules[@]}"
-   ```
-2. Verify git diff before release:
-   ```bash
-   git status --short
-   git diff --cached --name-only
-   ```
+```bash
+mapfile -t test_modules < <(find tests -maxdepth 1 -type f -name 'test_*.py' ! -name 'test_japan_market.py' -printf '%f\n' | sed -e 's/\.py$//' -e 's#^#tests.#' | sort)
+.venv/bin/python -m unittest -v "${test_modules[@]}"
 
-### Verification Checkpoints
-- `USER MANUAL CHECK`: Perform final live check of:
-  - Touch target sizes (minimum 44px for main nav/buttons).
-  - Scroll performance and virtualkeyboard overlays on forms.
-  - Zero console errors in web browser developer tools.
+git status --short
+git diff --cached --name-only
+```
+
+### Stop & Commit Point
+- **Commit Message:** `chore(release): complete Phase A verification`
+- **Wait for User Approval:** 🔴 **STOP HERE**

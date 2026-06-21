@@ -74,3 +74,18 @@
   - Verified local HTTP response for `/access` returned HTTP 200.
   - Verified previous sessions are invalidated due to the incremented `auth_version`.
 - **Note:** All actual rotated secrets, tokens, password hashes, and database values are excluded from logs, terminal history, and chat.
+
+### 2026-06-21T05:52:00Z - Database and Uploads Restoration
+- **Actions Performed:**
+  - Identified that the database backed up in Task 4 (`/opt/gyu/backups/20260621T034933Z/db.sqlite`) was a stale version from March 6th, 2026.
+  - Verified and compared database candidates: Active DB, Task 4 backup, soso6079 original DB, and ZIP staging DB.
+  - Identified the staging bundle `/opt/gyu/staging/runtime_bundle_latest.zip` as containing the most recent database (`db.sqlite` with events up to 2026-06-19 and 1,181 events).
+  - Prepared and staged a secure, verified folder structure (`data.new`) with whitelisted files only, preserving UID/GID and permission metadata.
+  - Stopped the `trading-journal.service` (confirmed state: inactive) and verified no active file locks.
+  - Atomically swapped `/opt/gyu/trading_journal/data` to a timestamped backup directory `/opt/gyu/backups/data_backup__8ygibuw`.
+  - Atomically deployed the verified staging candidate to `/opt/gyu/trading_journal/data/`.
+  - Re-verified database integrity (`ok`), total events (`1,181`), latest event timestamp (`2026-06-19`), and DB SHA-256 hash.
+  - Verified uploads directory matched the staged manifest (25 items).
+  - Retained `.env.runtime` unmodified.
+- **Note:** All actual secrets, tokens, and database values are excluded from logs, terminal history, and chat.
+

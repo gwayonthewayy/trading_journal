@@ -1853,3 +1853,103 @@ summary {
     display: none;
   }
 }
+
+#portfolio-mobile-cards {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  #portfolio-desktop-table-wrap {
+    display: none !important;
+  }
+  #portfolio-mobile-cards {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    width: 100%;
+  }
+  .portfolio-ticker-card {
+    background: var(--surface);
+    border: var(--glass-border);
+    border-radius: 12px;
+    padding: 16px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+  }
+  .portfolio-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+    border-bottom: var(--glass-border);
+    padding-bottom: 8px;
+  }
+  .portfolio-card-header .ticker-name {
+    font-size: 1.1rem;
+    color: var(--primary);
+  }
+  .portfolio-card-header .symbol-name {
+    font-size: 0.85rem;
+    color: var(--subtle);
+    text-align: right;
+    word-break: break-all;
+  }
+  .portfolio-card-metrics {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+  .portfolio-card-metrics .metric-col {
+    display: flex;
+    flex-direction: column;
+  }
+  .portfolio-card-metrics .label {
+    font-size: 0.75rem;
+    color: var(--subtle);
+    text-transform: uppercase;
+  }
+  .portfolio-card-metrics .val {
+    font-size: 0.95rem;
+    font-weight: 500;
+  }
+  
+  .mobile-lot-card {
+    background: var(--surface-soft);
+    border: var(--glass-border);
+    border-radius: 8px;
+    padding: 12px;
+    margin-bottom: 8px;
+  }
+  .mobile-lot-card .lot-head {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 8px;
+  }
+  .mobile-lot-card .lot-stats {
+    font-size: 0.85rem;
+    margin-bottom: 8px;
+  }
+  .mobile-lot-card .lot-editable-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+  .mobile-lot-card .editable-item {
+    background: var(--surface);
+    border: 1px dashed var(--table-border-strong);
+    border-radius: 4px;
+    padding: 4px 8px;
+    cursor: pointer;
+    margin-bottom: 8px;
+  }
+  .mobile-lot-card .editable-item label {
+    display: block;
+    font-size: 0.7rem;
+    color: var(--subtle);
+    margin-bottom: 2px;
+  }
+  .mobile-lot-card .editable-item .val {
+    font-size: 0.85rem;
+  }
+}

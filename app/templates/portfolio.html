@@ -50,7 +50,7 @@
       <p>Expand each row to see lot-level details.</p>
     </div>
     <div class="table-tool-row">
-      <button id="portfolio-col-btn" type="button" class="secondary">Columns</button>
+      <button id="portfolio-col-btn" type="button" class="secondary pc-only">Columns</button>
       {% if can_write %}
       <button id="portfolio-market-refresh-btn" type="button" class="secondary">Refresh Price/FX</button>
       {% endif %}
@@ -58,7 +58,7 @@
     </div>
   </div>
   {% if can_write %}
-  <p class="small">Tip: In lot details, double-click `Entry/SL/TP/Reason/Note` to edit and press Enter to save.</p>
+  <p class="small pc-only">Tip: In lot details, double-click `Entry/SL/TP/Reason/Note` to edit and press Enter to save.</p>
   {% endif %}
 
   <div id="portfolio-desktop-table-wrap" class="table-wrap">
@@ -543,21 +543,43 @@
   async function loadPortfolioMarketStatus() {
     if (!portfolioMarketStatus) return;
     try {
-      const status = await requestJson("/api/market-data/status", "GET");
-      const quoteAge = status.quote_latest_age_sec;
-      const fxAge = status.fx_latest_age_sec;
-      if ((quoteAge !== null && quoteAge > 300) || (fxAge !== null && fxAge > 300)) {
-        portfolioMarketStatus.textContent = "데이터 지연";
-        portfolioMarketStatus.className = "small warning";
-      } else {
-        const quoteText = quoteAge === null || quoteAge === undefined ? "N/A" : `${quoteAge}s`;
-        const fxText = fxAge === null || fxAge === undefined ? "N/A" : `${fxAge}s`;
-        portfolioMarketStatus.textContent = `Market data: Quotes ${status.quote_entries} (age ${quoteText}), FX ${status.fx_entries} (age ${fxText})`;
-        portfolioMarketStatus.className = "small";
+      if (sessionStorage.getItem("portfolioMarketRefreshSuccess")) {
+        sessionStorage.removeItem("portfolioMarketRefreshSuccess");
+        portfolioMarketStatus.textContent = "업데이트 완료";
+        portfolioMarketStatus.className = "small success";
+        setTimeout(() => {
+          loadPortfolioMarketStatusReal();
+        }, 3000);
+        return;
       }
+      await loadPortfolioMarketStatusReal();
     } catch (_) {
-      portfolioMarketStatus.textContent = "Market data: status unavailable";
+      portfolioMarketStatus.textContent = "데이터를 불러올 수 없습니다";
       portfolioMarketStatus.className = "small error";
+    }
+  }
+
+  async function loadPortfolioMarketStatusReal() {
+    const status = await requestJson("/api/market-data/status", "GET");
+    const quoteAge = status.quote_latest_age_sec;
+    const fxAge = status.fx_latest_age_sec;
+
+    if (quoteAge === null || fxAge === null || quoteAge === undefined || fxAge === undefined) {
+      portfolioMarketStatus.textContent = "데이터를 불러올 수 없습니다";
+      portfolioMarketStatus.className = "small error";
+      return;
+    }
+
+    const quoteText = `${quoteAge}s`;
+    const fxText = `${fxAge}s`;
+    const statusText = `Market data: Quotes ${status.quote_entries} (age ${quoteText}), FX ${status.fx_entries} (age ${fxText})`;
+
+    if (quoteAge > 300 || fxAge > 300) {
+      portfolioMarketStatus.textContent = "데이터 지연 | " + statusText;
+      portfolioMarketStatus.className = "small warning";
+    } else {
+      portfolioMarketStatus.textContent = statusText;
+      portfolioMarketStatus.className = "small";
     }
   }
 
@@ -783,8 +805,7 @@
       portfolioMarketStatus.textContent = "데이터 갱신 중...";
       portfolioMarketStatus.className = "small";
       await requestJson("/api/market-data/refresh", "POST");
-      portfolioMarketStatus.textContent = "업데이트 완료";
-      await loadPortfolioMarketStatus();
+      sessionStorage.setItem("portfolioMarketRefreshSuccess", "1");
       window.location.reload();
     } catch (err) {
       portfolioMarketStatus.textContent = "업데이트 실패";
@@ -850,13 +871,15 @@
     note: "Note",
   };
 
-  function readLotInlineCurrentValue(lotRow, field) {
-    if (!lotRow) return "";
-    if (field === "entry_price") return String(lotRow.dataset.entryPrice || "");
-    if (field === "sl") return String(lotRow.dataset.sl || "");
-    if (field === "tp") return String(lotRow.dataset.tp || "");
-    if (field === "buy_reason") return String(lotRow.dataset.buyReason || "");
-    if (field === "note") return String(lotRow.dataset.note || "");
+  function readLotInlineCurrentValueByCell(cell, field) {
+    if (!cell) return "";
+    const container = cell.closest("[data-lot-id]");
+    if (!container) return "";
+    if (field === "entry_price") return String(container.dataset.entryPrice || "");
+    if (field === "sl") return String(container.dataset.sl || "");
+    if (field === "tp") return String(container.dataset.tp || "");
+    if (field === "buy_reason") return String(container.dataset.buyReason || "");
+    if (field === "note") return String(container.dataset.note || "");
     return "";
   }
 
@@ -870,47 +893,69 @@
     return num;
   }
 
+  function editLotField(lotId, buyEventId, field, label, currentValue) {
+    const edited = window.prompt(`${label} (press Enter to save)`, currentValue);
+    if (edited === null) return;
+
+    (async () => {
+      try {
+        if (field === "sl" || field === "tp") {
+          const next = parseInlineNumber(edited, label, false);
+          await postJson("/api/lot/sl", {
+            lot_id: lotId,
+            ...(field === "sl" ? { new_sl: next } : { new_tp: next }),
+          });
+        } else if (field === "entry_price") {
+          if (!buyEventId) throw new Error("linked BUY event not found");
+          const next = parseInlineNumber(edited, label, true);
+          await patchJson(`/api/events/${buyEventId}`, { price: next });
+        } else if (field === "buy_reason") {
+          if (!buyEventId) throw new Error("linked BUY event not found");
+          const next = String(edited || "").trim();
+          await patchJson(`/api/events/${buyEventId}`, { reason: next || null });
+        } else if (field === "note") {
+          if (!buyEventId) throw new Error("linked BUY event not found");
+          const next = String(edited || "").trim();
+          await patchJson(`/api/events/${buyEventId}`, { note: next || null });
+        }
+        window.location.reload();
+      } catch (err) {
+        window.alert(`Inline edit failed: ${err.message}`);
+      }
+    })();
+  }
+
   portfolioTable?.addEventListener("dblclick", async (e) => {
     const cell = e.target?.closest ? e.target.closest("[data-inline-portfolio-field]") : null;
     if (!cell) return;
+    const container = cell.closest("[data-lot-id]");
+    if (!container) return;
 
-    const lotRow = cell.closest("tr.portfolio-lot-row");
-    if (!lotRow) return;
-
-    const lotId = Number(lotRow.dataset.lotId || "");
-    const buyEventId = Number(lotRow.dataset.buyEventId || "");
+    const lotId = Number(container.dataset.lotId || "");
+    const buyEventId = Number(container.dataset.buyEventId || "");
     const field = String(cell.dataset.inlinePortfolioField || "");
     const label = inlineLotFieldLabel[field] || field;
     if (!lotId || !field) return;
 
-    const currentValue = readLotInlineCurrentValue(lotRow, field);
-    const edited = window.prompt(`${label} (press Enter to save)`, currentValue);
-    if (edited === null) return;
+    const currentValue = readLotInlineCurrentValueByCell(cell, field);
+    editLotField(lotId, buyEventId, field, label, currentValue);
+  });
 
-    try {
-      if (field === "sl" || field === "tp") {
-        const next = parseInlineNumber(edited, label, false);
-        await postJson("/api/lot/sl", {
-          lot_id: lotId,
-          ...(field === "sl" ? { new_sl: next } : { new_tp: next }),
-        });
-      } else if (field === "entry_price") {
-        if (!buyEventId) throw new Error("linked BUY event not found");
-        const next = parseInlineNumber(edited, label, true);
-        await patchJson(`/api/events/${buyEventId}`, { price: next });
-      } else if (field === "buy_reason") {
-        if (!buyEventId) throw new Error("linked BUY event not found");
-        const next = String(edited || "").trim();
-        await patchJson(`/api/events/${buyEventId}`, { reason: next || null });
-      } else if (field === "note") {
-        if (!buyEventId) throw new Error("linked BUY event not found");
-        const next = String(edited || "").trim();
-        await patchJson(`/api/events/${buyEventId}`, { note: next || null });
-      }
-      window.location.reload();
-    } catch (err) {
-      window.alert(`Inline edit failed: ${err.message}`);
-    }
+  const portfolioMobileCardsContainer = document.getElementById("portfolio-mobile-cards");
+  portfolioMobileCardsContainer?.addEventListener("click", async (e) => {
+    const cell = e.target?.closest ? e.target.closest("[data-inline-portfolio-field]") : null;
+    if (!cell) return;
+    const container = cell.closest("[data-lot-id]");
+    if (!container) return;
+
+    const lotId = Number(container.dataset.lotId || "");
+    const buyEventId = Number(container.dataset.buyEventId || "");
+    const field = String(cell.dataset.inlinePortfolioField || "");
+    const label = inlineLotFieldLabel[field] || field;
+    if (!lotId || !field) return;
+
+    const currentValue = readLotInlineCurrentValueByCell(cell, field);
+    editLotField(lotId, buyEventId, field, label, currentValue);
   });
 
   document.querySelectorAll(".lot-edit-controls").forEach((wrap) => {

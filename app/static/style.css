@@ -1891,17 +1891,18 @@ summary {
     font-size: 0.85rem;
     color: var(--subtle);
     text-align: right;
-    word-break: break-all;
+    overflow-wrap: anywhere;
   }
   .portfolio-card-metrics {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 12px;
     margin-bottom: 12px;
   }
   .portfolio-card-metrics .metric-col {
     display: flex;
     flex-direction: column;
+    min-width: 0;
   }
   .portfolio-card-metrics .label {
     font-size: 0.75rem;
@@ -1912,7 +1913,7 @@ summary {
     font-size: 0.95rem;
     font-weight: 500;
   }
-  
+
   .mobile-lot-card {
     background: var(--surface-soft);
     border: var(--glass-border);
@@ -1931,7 +1932,7 @@ summary {
   }
   .mobile-lot-card .lot-editable-grid {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 8px;
     margin-bottom: 8px;
   }
@@ -1942,6 +1943,7 @@ summary {
     padding: 4px 8px;
     cursor: pointer;
     margin-bottom: 8px;
+    min-width: 0;
   }
   .mobile-lot-card .editable-item label {
     display: block;

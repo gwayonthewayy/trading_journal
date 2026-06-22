@@ -1256,10 +1256,44 @@ summary {
   color: #9e1f1f;
 }
 
+/* ── Stats unified return chart period tabs ───────────── */
+.stats-tab-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.stats-tab {
+  padding: 6px 14px;
+  border-radius: 20px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--subtle);
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.stats-tab.is-active,
+.stats-tab[aria-selected="true"] {
+  background: var(--primary);
+  color: #fff;
+  border-color: var(--primary);
+}
+
+.stats-tab:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
 .chart-wrap {
   position: relative;
   width: 100%;
-  overflow-x: auto;
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: hidden;
   overflow-y: hidden;
   border: 1px solid var(--line);
   border-radius: 12px;
@@ -1268,13 +1302,20 @@ summary {
 
 .chart-wrap > svg {
   width: 100%;
-  min-width: 760px;
+  min-width: 0;
   display: block;
 }
 
 .chart-wrap > .apexcharts-canvas {
   width: 100% !important;
-  min-width: 760px;
+  min-width: 0 !important;
+  max-width: 100% !important;
+}
+
+/* apexcharts inner SVG responsive */
+.chart-wrap .apexcharts-canvas svg {
+  overflow: visible;
+  max-width: 100%;
 }
 
 .chart-wrap.has-hover-tip .chart-hover-node {
@@ -1476,10 +1517,8 @@ summary {
 
   .dist-table-wrap {
     max-height: 220px;
-  }
-
-  .table-wrap {
-    display: none;
+    overflow-x: auto;
+    width: 100%;
   }
 
   .dist-table-wrap {

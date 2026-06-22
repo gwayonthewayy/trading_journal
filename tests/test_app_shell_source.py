@@ -14,7 +14,7 @@ class TestAppShellSource(unittest.TestCase):
         self.assertIn('aria-current="page"', self.base_html)
 
         # Cache busting test
-        self.assertIn('?v=20260622-a1-3', self.base_html)
+        self.assertIn('?v=20260622-a1-4', self.base_html)
 
         # User Menu CSS isolation
         self.assertIn('id="user-menu-drawer"', self.base_html)

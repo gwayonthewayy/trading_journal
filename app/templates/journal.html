@@ -660,7 +660,7 @@
 
   <div id="journal-mobile-cards" class="journal-mobile-cards">
     {% for e in data.events %}
-    <article class="journal-mobile-card" data-event-id="{{ e.id }}">
+    <article class="journal-mobile-card" data-event-id="{{ e.id }}" data-event-image-urls='{{ e.image_urls | tojson }}'>
       <div class="journal-mobile-card-head">
         <strong>#{{ e.id }} {{ e.type }}</strong>
         <span class="small">{{ e.ts.strftime("%Y-%m-%d %H:%M:%S") if e.ts else "" }}</span>
@@ -693,7 +693,7 @@
         {% for img in mobile_image_urls %}
           {% set img_url = img.strip() %}
           {% if img_url %}
-          <a href="{{ img_url }}" target="_blank" rel="noreferrer">
+          <a href="{{ img_url }}" target="_blank" rel="noreferrer" class="mobile-card-image-link" data-image-url="{{ img_url }}">
             <img src="{{ img_url }}" alt="event image" style="max-width:100%; max-height:180px; object-fit:cover; border-radius:8px;" />
           </a>
           {% endif %}
@@ -1828,7 +1828,7 @@
       .map((url) => `<a href="${escapeHtml(url)}" target="_blank" rel="noreferrer" class="mobile-card-image-link" data-image-url="${escapeHtml(url)}"><img src="${escapeHtml(url)}" alt="event image" style="max-width:100%; max-height:180px; object-fit:cover; border-radius:8px;" /></a>`)
       .join("");
     return `
-      <article class="journal-mobile-card" data-event-id="${escapeHtml(e.id || "")}">
+      <article class="journal-mobile-card" data-event-id="${escapeHtml(e.id || "")}" data-event-image-urls="${escapeHtml(JSON.stringify(imageUrls))}">
         <div class="journal-mobile-card-head">
           <strong>#${escapeHtml(e.id || "")} ${escapeHtml(e.type || "")}</strong>
           <span class="small">${escapeHtml(formatTs(e.ts))}</span>
@@ -2428,35 +2428,62 @@
       journalMobileCards?.addEventListener("pointerdown", (e) => {
         const link = e.target.closest(".mobile-card-image-link");
         if (!link) return;
+        if (e.button !== 0 && e.pointerType === "mouse") return;
         startX = e.clientX;
         startY = e.clientY;
         clearLongPress();
         longPressTimer = setTimeout(async () => {
           longPressTimer = null;
-          // Trigger delete
-          link.setAttribute("data-long-pressed", "true"); // Prevent click navigation
+          link.setAttribute("data-long-pressed", "true");
           const imageUrl = link.dataset.imageUrl;
           const card = link.closest(".journal-mobile-card");
           const eventId = card?.dataset?.eventId;
-          if (!imageUrl || !eventId) return;
-
-          if (!window.confirm("이 사진을 삭제하시겠습니까?")) {
-            return;
-          }
 
           try {
-            // Find the desktop row to get the full image URL list, or fetch it
-            const row = document.querySelector(`tr.journal-row[data-event-id="${eventId}"]`);
-            const currentUrls = row ? parseEventImageUrlsDataset(row.dataset.eventImageUrls || "", row.dataset.eventImageUrl || "") : [];
+            if (!imageUrl || !eventId) {
+              throw new Error("이미지 URL 또는 이벤트 ID를 찾을 수 없습니다.");
+            }
+            if (!window.confirm("이 사진을 삭제하시겠습니까?")) {
+              return;
+            }
+
+            // 1. Get current image urls safely from data-event-image-urls
+            const rawUrls = card.dataset.eventImageUrls;
+            let currentUrls = [];
+            if (rawUrls) {
+              try {
+                const parsed = JSON.parse(rawUrls);
+                if (Array.isArray(parsed)) {
+                  currentUrls = parsed.map(u => String(u || "").trim()).filter(Boolean);
+                }
+              } catch (_) {}
+            }
+
+            // If we fail to get current list (or it has length 0), abort with error
+            if (!currentUrls || currentUrls.length === 0) {
+              throw new Error("이벤트 이미지 목록을 가져오지 못했습니다.");
+            }
+
+            // 2. Only allow delete if target exists in currentUrls
+            if (!currentUrls.includes(imageUrl)) {
+              throw new Error("삭제할 이미지가 현재 이미지 목록에 존재하지 않습니다.");
+            }
+
             const nextUrls = currentUrls.filter((url) => url !== imageUrl);
 
+            // 3. image_url only PATCH (explicitly set null if empty to prevent accidental omissions)
             await jsonRequest(`/api/events/${eventId}`, "PATCH", {
-              image_url: serializeEventImageUrls(nextUrls) || null,
+              image_url: nextUrls.length > 0 ? serializeEventImageUrls(nextUrls) : null,
             });
-            // Re-render the page to update both table and cards
+
             await loadJournalPage(journalState.page, false);
           } catch (err) {
             window.alert(`Image delete failed: ${err.message}`);
+          } finally {
+            clearLongPress();
+            setTimeout(() => {
+              link.removeAttribute("data-long-pressed");
+            }, 100);
           }
         }, 600);
       });
@@ -2474,15 +2501,10 @@
       journalMobileCards?.addEventListener("pointerup", clearLongPress);
       journalMobileCards?.addEventListener("pointercancel", clearLongPress);
       journalMobileCards?.addEventListener("pointerleave", clearLongPress);
-      
-      // Also prevent context menu from triggering on long press (mobile browsers usually fire contextmenu)
+
       journalMobileCards?.addEventListener("contextmenu", (e) => {
         if (e.target.closest(".mobile-card-image-link")) {
-          // It's tricky to distinguish normal long-press context menu from our custom long press.
-          // But since we handle the deletion via prompt, we can prevent the default context menu.
-          // e.preventDefault(); 
-          // Actually, we don't strictly need to prevent it, but preventing it provides a cleaner UX.
-          // Let's just rely on the prompt which naturally interrupts it in many browsers.
+          e.preventDefault();
         }
       });
     }

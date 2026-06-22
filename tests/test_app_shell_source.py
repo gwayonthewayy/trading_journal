@@ -87,3 +87,40 @@ class TestAppShellSource(unittest.TestCase):
         portfolio_html = Path("app/templates/portfolio.html").read_text(encoding="utf-8")
         self.assertIn('[1, 2, 5, 6].includes(index)', portfolio_html)
         self.assertIn('window.innerWidth <= 768', portfolio_html)
+
+    def test_mobile_image_delete_and_quick_attach(self):
+        journal_html = Path("app/templates/journal.html").read_text(encoding="utf-8")
+
+        # 1. Quick Image Attach 기본 false
+        self.assertIn("{% set ENABLE_QUICK_IMAGE_ATTACH = false %}", journal_html)
+
+        # 2. false일 때 패널/FAB/리스너 비활성화
+        self.assertIn("{% if can_write and ENABLE_QUICK_IMAGE_ATTACH %}", journal_html)
+        self.assertIn("if (ENABLE_QUICK_IMAGE_ATTACH) {", journal_html)
+
+        # 3. 모바일 table hidden, desktop 유지
+        self.assertIn('<div class="table-tool-row hidden-mobile">', journal_html)
+        self.assertIn('<div class="table-wrap hidden-mobile">', journal_html)
+        self.assertIn('.hidden-mobile {', self.style_css)
+        self.assertIn('display: none !important;', self.style_css)
+
+        # 4. long-press 600ms
+        self.assertIn("setTimeout(async () => {", journal_html)
+        self.assertIn(", 600);", journal_html)
+
+        # 5. 10px 이동 취소
+        self.assertIn("Math.sqrt(dx * dx + dy * dy) > 10", journal_html)
+
+        # 6. ADMIN에서만 활성화 (canWrite is true)
+        self.assertIn("if (canWrite) {", journal_html)
+
+        # 7. 현재 사진 목록 확인 실패 시 PATCH 금지
+        self.assertIn("if (!currentUrls || currentUrls.length === 0) {", journal_html)
+        self.assertIn('throw new Error("이벤트 이미지 목록을 가져오지 못했습니다.");', journal_html)
+
+        # 8. contextmenu preventDefault
+        self.assertIn('journalMobileCards?.addEventListener("contextmenu", (e) => {', journal_html)
+        self.assertIn('e.preventDefault();', journal_html)
+
+        # 9. image_url만 PATCH
+        self.assertIn('image_url: nextUrls.length > 0 ? serializeEventImageUrls(nextUrls) : null', journal_html)

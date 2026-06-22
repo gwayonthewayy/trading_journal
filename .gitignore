@@ -13,3 +13,12 @@ data/uploads/
 trading_data.zip
 runtime_bundle*.zip
 data/cache/kis_*
+
+# Local agent workspace files (do not track)
+/.openclaw/
+/AGENTS.md
+/HEARTBEAT.md
+/IDENTITY.md
+/SOUL.md
+/TOOLS.md
+/USER.md

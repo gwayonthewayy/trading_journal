@@ -47,6 +47,13 @@ class StatsTemplateAndThemeTests(unittest.TestCase):
     def test_stats_charts_disable_overlapping_data_labels(self):
         self.assertEqual(self.stats_template.count("dataLabels: { enabled: false }"), 4)
 
+    def test_stats_charts_mobile_readability_options(self):
+        # A3 Requirement: tick limit, overlap hiding, no rotation
+        self.assertIn("hideOverlappingLabels: true,", self.stats_template)
+        self.assertIn("tickAmount: 5,", self.stats_template)
+        # Verify rotate: 0 is in the responsive options
+        self.assertTrue(re.search(r"responsive: \[.*?tickAmount: 5.*?rotate: 0", self.stats_template, re.DOTALL))
+
     def test_filter_and_image_styles_use_theme_tokens(self):
         selectors = {
             ".th-filter-menu-title": ["color: var(--text);"],

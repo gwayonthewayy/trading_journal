@@ -1095,6 +1095,7 @@
           style: { colors: textThemeColor, fontSize: '10px' },
           rotate: -30,
           rotateAlways: false,
+          hideOverlappingLabels: true,
           trim: true,
           maxHeight: 40
         },
@@ -1125,7 +1126,14 @@
           options: {
             chart: { height: 220 },
             legend: { show: false },
-            xaxis: { labels: { style: { fontSize: '8px' } } }
+            xaxis: {
+              tickAmount: 5,
+              labels: { 
+                rotate: 0,
+                rotateAlways: false,
+                style: { fontSize: '10px' } 
+              }
+            }
           }
         }
       ]

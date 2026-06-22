@@ -333,6 +333,11 @@
 
   function isPortfolioColumnVisible(index) {
     const key = String(index);
+    const isMobile = window.innerWidth <= 768;
+    // Mobile mandatory: Ticker(1), Name(2), Qty(5), Avg Entry(6)
+    if (isMobile && [1, 2, 5, 6].includes(index)) {
+      return true;
+    }
     if (!(key in portfolioColumnPrefs)) return true;
     return portfolioColumnPrefs[key] !== false;
   }

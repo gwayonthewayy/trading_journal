@@ -1655,11 +1655,15 @@ summary {
   transition: 160ms ease;
 }
 
+.user-menu-drawer[hidden] {
+  display: none !important;
+}
+
 .user-menu-drawer {
   position: fixed;
-  top: 0;
-  left: 0;
-  width: 100vw;
+  inset: 0;
+  width: auto;
+  max-width: 100%;
   height: 100vh;
   height: 100dvh;
   z-index: 9999;
@@ -1730,6 +1734,14 @@ summary {
 }
 
 @media (max-width: 768px) {
+  .topbar, .topbar-inner, .container, .card, .card-head, .table-tool-row, .table-wrap, .chart-wrap {
+    min-width: 0;
+    max-width: 100%;
+  }
+  .table-wrap, .chart-wrap {
+    overflow-x: auto;
+    width: 100%;
+  }
   .topbar-inner {
     grid-template-columns: minmax(0, 1fr) auto;
     height: 64px;

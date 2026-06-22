@@ -14,7 +14,7 @@ class TestAppShellSource(unittest.TestCase):
         self.assertIn('aria-current="page"', self.base_html)
 
         # Cache busting test
-        self.assertIn('?v=', self.base_html)
+        self.assertIn('?v=20260622-a1-3', self.base_html)
 
         # User Menu CSS isolation
         self.assertIn('id="user-menu-drawer"', self.base_html)
@@ -38,6 +38,9 @@ class TestAppShellSource(unittest.TestCase):
         self.assertIn('originalBodyOverflow = document.body.style.overflow', self.base_html)
         self.assertIn('document.body.style.overflow = originalBodyOverflow', self.base_html)
 
+        # Close listeners clearing check
+        self.assertIn('clearCloseListeners()', self.base_html)
+
         # Theme toggle duplicate structure check
         toggle_count = self.base_html.count('id="theme-toggle-btn"')
         self.assertEqual(toggle_count, 2, "Should have 2 theme toggles conditionally rendered")
@@ -46,12 +49,21 @@ class TestAppShellSource(unittest.TestCase):
         self.assertIn('@media (max-width: 768px)', self.style_css)
         self.assertIn('@media (min-width: 769px) and (max-width: 980px)', self.style_css)
 
+        # User menu CSS
+        self.assertIn('.user-menu-drawer[hidden] {\n  display: none !important;\n}', self.style_css)
+        self.assertIn('inset: 0;', self.style_css)
+        self.assertIn('max-width: 100%;', self.style_css)
+
         # Mobile layout fixes
         self.assertIn('grid-template-columns: minmax(0, 1fr) auto;', self.style_css)
         self.assertIn('.brand {\n    min-width: 0;', self.style_css)
         self.assertIn('text-overflow: ellipsis;', self.style_css)
         self.assertIn('width: 44px !important;', self.style_css)
         self.assertIn('height: 44px;', self.style_css)
+
+        # Container/Table containment
+        self.assertIn('.topbar, .topbar-inner, .container, .card, .card-head, .table-tool-row, .table-wrap, .chart-wrap', self.style_css)
+        self.assertIn('overflow-x: auto;\n    width: 100%;', self.style_css)
 
         # Safe area height and paddings
         self.assertIn('height: calc(56px + env(safe-area-inset-bottom));', self.style_css)
@@ -70,3 +82,8 @@ class TestAppShellSource(unittest.TestCase):
         self.assertNotIn('.drawer-overlay {', mobile_query_part)
         self.assertIn('.user-menu-overlay', self.style_css)
         self.assertIn('.user-menu-panel', self.style_css)
+
+    def test_portfolio_mobile_columns(self):
+        portfolio_html = Path("app/templates/portfolio.html").read_text(encoding="utf-8")
+        self.assertIn('[1, 2, 5, 6].includes(index)', portfolio_html)
+        self.assertIn('window.innerWidth <= 768', portfolio_html)

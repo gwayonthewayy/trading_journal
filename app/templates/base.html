@@ -8,7 +8,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <title>{{ title or "Trade Journal" }}</title>
   <link rel="manifest" href="/static/manifest.webmanifest" />
-  <link rel="stylesheet" href="/static/style.css?v=20260622-a1-2" />
+  <link rel="stylesheet" href="/static/style.css?v=20260622-a1-3" />
   <!-- Update 'v' query string on CSS changes to bypass CDN/browser cache -->
   <script>
     (function() {
@@ -218,8 +218,17 @@
       if (!trigger || !drawer) return;
 
       let originalBodyOverflow = '';
+      let transitionTimer = null;
+      let transitionHandler = null;
+      const panel = drawer.querySelector('.user-menu-panel');
+
+      function clearCloseListeners() {
+        if (transitionTimer) { clearTimeout(transitionTimer); transitionTimer = null; }
+        if (transitionHandler && panel) { panel.removeEventListener('transitionend', transitionHandler); transitionHandler = null; }
+      }
 
       function openMenu() {
+        clearCloseListeners();
         drawer.hidden = false;
         void drawer.offsetWidth;
         drawer.classList.add('is-open');
@@ -232,28 +241,34 @@
       }
 
       function closeMenu() {
+        clearCloseListeners();
         drawer.classList.remove('is-open');
-        drawer.setAttribute('aria-hidden', 'true');
-        drawer.inert = true;
-        trigger.setAttribute('aria-expanded', 'false');
-        document.body.style.overflow = originalBodyOverflow;
-        trigger.focus();
 
-        let transitionEnded = false;
-        const handler = (e) => {
-          if (e.target === drawer && !drawer.classList.contains('is-open')) {
-            drawer.hidden = true;
-            transitionEnded = true;
-            drawer.removeEventListener('transitionend', handler);
+        function finalizeClose() {
+          drawer.hidden = true;
+          drawer.inert = true;
+          drawer.setAttribute('aria-hidden', 'true');
+          trigger.setAttribute('aria-expanded', 'false');
+          document.body.style.overflow = originalBodyOverflow;
+          clearCloseListeners();
+        }
+
+        transitionHandler = (e) => {
+          if (e.target === panel && !drawer.classList.contains('is-open')) {
+            finalizeClose();
           }
         };
-        drawer.addEventListener('transitionend', handler);
-        setTimeout(() => {
-          if (!transitionEnded && !drawer.classList.contains('is-open')) {
-            drawer.hidden = true;
-            drawer.removeEventListener('transitionend', handler);
+
+        if (panel) {
+          panel.addEventListener('transitionend', transitionHandler);
+        }
+        transitionTimer = setTimeout(() => {
+          if (!drawer.classList.contains('is-open')) {
+            finalizeClose();
           }
         }, 300);
+
+        trigger.focus();
       }
 
       trigger.addEventListener('click', openMenu);

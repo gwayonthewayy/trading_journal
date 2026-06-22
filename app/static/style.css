@@ -1617,12 +1617,22 @@ summary {
 .quick-action-btn.btn-sl { border-left: 4px solid var(--subtle); }
 
 .user-menu-trigger-btn {
-  padding: 6px 10px;
+  width: 44px !important;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
   border-radius: 8px;
 }
 
 .user-menu-close-btn {
-  padding: 4px 8px;
+  width: 44px !important;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
   border: none;
   background: transparent;
   color: var(--text);
@@ -1721,14 +1731,24 @@ summary {
 
 @media (max-width: 768px) {
   .topbar-inner {
-    grid-template-columns: 1fr auto;
+    grid-template-columns: minmax(0, 1fr) auto;
     height: 64px;
     padding: 0 16px;
     justify-items: stretch;
+    align-items: center;
     gap: 8px;
+  }
+  .brand {
+    min-width: 0;
   }
   .brand strong {
     font-size: 1.1rem;
+  }
+  .brand .mobile-only strong {
+    display: block;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   .hidden-mobile {
     display: none !important;

@@ -8,7 +8,8 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <title>{{ title or "Trade Journal" }}</title>
   <link rel="manifest" href="/static/manifest.webmanifest" />
-  <link rel="stylesheet" href="/static/style.css" />
+  <link rel="stylesheet" href="/static/style.css?v=20260622-a1-2" />
+  <!-- Update 'v' query string on CSS changes to bypass CDN/browser cache -->
   <script>
     (function() {
       const savedTheme = localStorage.getItem("tj-theme") || "dark";
@@ -63,7 +64,7 @@
           <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
         </button>
 
-        <div id="user-menu-drawer" class="user-menu-drawer" aria-hidden="true" inert>
+        <div id="user-menu-drawer" class="user-menu-drawer" aria-hidden="true" inert hidden>
           <div class="user-menu-overlay" id="user-menu-overlay" tabindex="-1"></div>
           <div class="user-menu-panel" role="dialog" aria-modal="true" aria-label="User Menu">
             <div class="user-menu-header">
@@ -219,6 +220,8 @@
       let originalBodyOverflow = '';
 
       function openMenu() {
+        drawer.hidden = false;
+        void drawer.offsetWidth;
         drawer.classList.add('is-open');
         drawer.setAttribute('aria-hidden', 'false');
         drawer.inert = false;
@@ -235,6 +238,22 @@
         trigger.setAttribute('aria-expanded', 'false');
         document.body.style.overflow = originalBodyOverflow;
         trigger.focus();
+
+        let transitionEnded = false;
+        const handler = (e) => {
+          if (e.target === drawer && !drawer.classList.contains('is-open')) {
+            drawer.hidden = true;
+            transitionEnded = true;
+            drawer.removeEventListener('transitionend', handler);
+          }
+        };
+        drawer.addEventListener('transitionend', handler);
+        setTimeout(() => {
+          if (!transitionEnded && !drawer.classList.contains('is-open')) {
+            drawer.hidden = true;
+            drawer.removeEventListener('transitionend', handler);
+          }
+        }, 300);
       }
 
       trigger.addEventListener('click', openMenu);

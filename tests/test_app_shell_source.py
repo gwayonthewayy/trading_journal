@@ -12,7 +12,10 @@ class TestAppShellSource(unittest.TestCase):
         self.assertIn('포트폴리오', self.base_html)
         self.assertIn('분석', self.base_html)
         self.assertIn('aria-current="page"', self.base_html)
-        
+
+        # Cache busting test
+        self.assertIn('?v=', self.base_html)
+
         # User Menu CSS isolation
         self.assertIn('id="user-menu-drawer"', self.base_html)
         self.assertIn('user-menu-overlay', self.base_html)
@@ -26,8 +29,10 @@ class TestAppShellSource(unittest.TestCase):
         self.assertIn("document.body.style.overflow = 'hidden'", self.base_html)
         self.assertIn("e.key === 'Tab'", self.base_html)
 
-        # Inert Focus block and Original Body Overflow logic
-        self.assertIn(' inert>', self.base_html)
+        # Inert Focus block, Hidden attr, and Original Body Overflow logic
+        self.assertIn(' inert hidden>', self.base_html)
+        self.assertIn('drawer.hidden = false', self.base_html)
+        self.assertIn('drawer.hidden = true', self.base_html)
         self.assertIn('drawer.inert = false', self.base_html)
         self.assertIn('drawer.inert = true', self.base_html)
         self.assertIn('originalBodyOverflow = document.body.style.overflow', self.base_html)
@@ -40,6 +45,13 @@ class TestAppShellSource(unittest.TestCase):
     def test_style_css_responsiveness(self):
         self.assertIn('@media (max-width: 768px)', self.style_css)
         self.assertIn('@media (min-width: 769px) and (max-width: 980px)', self.style_css)
+
+        # Mobile layout fixes
+        self.assertIn('grid-template-columns: minmax(0, 1fr) auto;', self.style_css)
+        self.assertIn('.brand {\n    min-width: 0;', self.style_css)
+        self.assertIn('text-overflow: ellipsis;', self.style_css)
+        self.assertIn('width: 44px !important;', self.style_css)
+        self.assertIn('height: 44px;', self.style_css)
 
         # Safe area height and paddings
         self.assertIn('height: calc(56px + env(safe-area-inset-bottom));', self.style_css)

@@ -1,6 +1,5 @@
 import unittest
 from pathlib import Path
-import re
 
 class TestAppShellSource(unittest.TestCase):
     def setUp(self):
@@ -27,6 +26,13 @@ class TestAppShellSource(unittest.TestCase):
         self.assertIn("document.body.style.overflow = 'hidden'", self.base_html)
         self.assertIn("e.key === 'Tab'", self.base_html)
 
+        # Inert Focus block and Original Body Overflow logic
+        self.assertIn(' inert>', self.base_html)
+        self.assertIn('drawer.inert = false', self.base_html)
+        self.assertIn('drawer.inert = true', self.base_html)
+        self.assertIn('originalBodyOverflow = document.body.style.overflow', self.base_html)
+        self.assertIn('document.body.style.overflow = originalBodyOverflow', self.base_html)
+
         # Theme toggle duplicate structure check
         toggle_count = self.base_html.count('id="theme-toggle-btn"')
         self.assertEqual(toggle_count, 2, "Should have 2 theme toggles conditionally rendered")
@@ -35,8 +41,14 @@ class TestAppShellSource(unittest.TestCase):
         self.assertIn('@media (max-width: 768px)', self.style_css)
         self.assertIn('@media (min-width: 769px) and (max-width: 980px)', self.style_css)
 
-        # Safe area height
+        # Safe area height and paddings
         self.assertIn('height: calc(56px + env(safe-area-inset-bottom));', self.style_css)
+        self.assertIn('padding-top: env(safe-area-inset-top);', self.style_css)
+        self.assertIn('padding-right: env(safe-area-inset-right);', self.style_css)
+        self.assertIn('padding-bottom: env(safe-area-inset-bottom);', self.style_css)
+
+        # 100dvh fallback check
+        self.assertIn('height: 100dvh;', self.style_css)
 
         # Check Z-Index
         self.assertIn('z-index: 9999;', self.style_css)

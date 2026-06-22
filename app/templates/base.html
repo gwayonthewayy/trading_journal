@@ -63,7 +63,7 @@
           <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
         </button>
 
-        <div id="user-menu-drawer" class="user-menu-drawer" aria-hidden="true">
+        <div id="user-menu-drawer" class="user-menu-drawer" aria-hidden="true" inert>
           <div class="user-menu-overlay" id="user-menu-overlay" tabindex="-1"></div>
           <div class="user-menu-panel" role="dialog" aria-modal="true" aria-label="User Menu">
             <div class="user-menu-header">
@@ -216,10 +216,14 @@
 
       if (!trigger || !drawer) return;
 
+      let originalBodyOverflow = '';
+
       function openMenu() {
         drawer.classList.add('is-open');
         drawer.setAttribute('aria-hidden', 'false');
+        drawer.inert = false;
         trigger.setAttribute('aria-expanded', 'true');
+        originalBodyOverflow = document.body.style.overflow;
         document.body.style.overflow = 'hidden';
         if (closeBtn) closeBtn.focus();
       }
@@ -227,8 +231,9 @@
       function closeMenu() {
         drawer.classList.remove('is-open');
         drawer.setAttribute('aria-hidden', 'true');
+        drawer.inert = true;
         trigger.setAttribute('aria-expanded', 'false');
-        document.body.style.overflow = '';
+        document.body.style.overflow = originalBodyOverflow;
         trigger.focus();
       }
 

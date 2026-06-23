@@ -548,7 +548,7 @@
         portfolioMarketStatus.textContent = "업데이트 완료";
         portfolioMarketStatus.className = "small success";
         setTimeout(() => {
-          loadPortfolioMarketStatusReal();
+          void loadPortfolioMarketStatus();
         }, 3000);
         return;
       }
@@ -564,7 +564,9 @@
     const quoteAge = status.quote_latest_age_sec;
     const fxAge = status.fx_latest_age_sec;
 
-    if (quoteAge === null || fxAge === null || quoteAge === undefined || fxAge === undefined) {
+    if (quoteAge === null || fxAge === null || quoteAge === undefined || fxAge === undefined ||
+        !status.quote_entries || status.quote_entries <= 0 ||
+        !status.fx_entries || status.fx_entries <= 0) {
       portfolioMarketStatus.textContent = "데이터를 불러올 수 없습니다";
       portfolioMarketStatus.className = "small error";
       return;

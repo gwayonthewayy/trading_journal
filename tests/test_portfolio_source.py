@@ -27,6 +27,13 @@ class TestPortfolioSource(unittest.TestCase):
         self.assertIn('quoteAge === null', self.portfolio_html)
         self.assertIn('fxAge === null', self.portfolio_html)
 
+        # unhandled rejection 방지를 위한 void 처리
+        self.assertIn('void loadPortfolioMarketStatus();', self.portfolio_html)
+
+        # entries 없거나 <= 0 검증 분기
+        self.assertRegex(self.portfolio_html, r'status\.quote_entries\s*<=\s*0')
+        self.assertRegex(self.portfolio_html, r'status\.fx_entries\s*<=\s*0')
+
     def test_mobile_lot_editing_connection(self):
         # 2. 공통 editLotField 함수로 편집 로직 추출
         self.assertIn('function editLotField(', self.portfolio_html)

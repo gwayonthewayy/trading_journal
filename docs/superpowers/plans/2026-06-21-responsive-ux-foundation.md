@@ -258,6 +258,8 @@ Record the manual test results in the next response before requesting a merge.
 | 1440px | Journal PC layout preserved | | |
 | All | Stats Return Chart Switcher | | |
 | All | Unauthorized `/access` view | | |
+| 768px | Portfolio Mobile Cards & UI | PASS | 모바일 UX, lot 상세, 가로 스크롤 이상 없음, 불필요한 버튼 숨김 정상 |
+| All | Portfolio Market Status Refresh | PASS | 상태 문구(데이터 갱신 중 등) 전환 정상 |
 
 ### A5-3: Rollback / Fix Process
 - If any test in A5-2 fails:

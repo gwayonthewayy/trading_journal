@@ -167,6 +167,13 @@
   - Reboot recovery validation: **Deferred** (pending scheduled server maintenance to avoid disrupting active user sessions and agent processes).
   - KIS activation: **Separate step** (not enabled under current scope).
 
-
-
-
+### 2026-06-23T07:22:00Z - A4 Mobile Portfolio Verification
+- **Verification Method**: Human-Assisted Verification
+- **Outcome**: PASS
+- **Verified Areas**:
+  - Mobile portfolio card UI rendered correctly.
+  - Holdings and lot details correctly displayed in an accordion.
+  - Horizontal scrolling issues resolved.
+  - Columns button and PC-specific tip safely hidden on mobile.
+  - Refresh Price/FX status indicators properly display loading, success, delay, and error states.
+  - Overall mobile UX satisfaction is confirmed.

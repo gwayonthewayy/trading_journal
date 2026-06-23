@@ -22,3 +22,7 @@ data/cache/kis_*
 /SOUL.md
 /TOOLS.md
 /USER.md
+
+# 테스트 및 서버 실행 로그 (레포 루트 한정)
+/*.log
+/uvicorn.log

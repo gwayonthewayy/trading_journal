@@ -177,3 +177,11 @@
   - Columns button and PC-specific tip safely hidden on mobile.
   - Refresh Price/FX status indicators properly display loading, success, delay, and error states.
   - Overall mobile UX satisfaction is confirmed.
+
+### 2026-06-23T13:25:00Z - Runtime Token Rotation and Service Normalization
+- **Actions Performed:**
+  - Runtime auth token rotation completed atomically.
+  - The trading-journal.service restarted by user.
+  - 127.0.0.1:8000 LISTEN confirmed.
+  - /access HTTP 200 confirmed.
+- **Note:** No token values or actual secrets are recorded in this log or git history.

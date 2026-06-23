@@ -1955,3 +1955,29 @@ summary {
     font-size: 0.85rem;
   }
 }
+
+/* 사용자 메뉴 내 사용자 설정 내비게이션 (User Actions Navigation) */
+.user-actions-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 8px;
+}
+.user-actions-nav a {
+  text-decoration: none;
+  color: var(--text);
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: background-color 0.2s;
+}
+.user-actions-nav a:hover {
+  background-color: var(--surface-soft);
+}
+.user-actions-nav a.disabled {
+  opacity: 0.5;
+  pointer-events: none;
+  text-decoration: none;
+  color: var(--text);
+}

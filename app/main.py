@@ -10,6 +10,7 @@ from fastapi.templating import Jinja2Templates
 from sqlmodel import Session
 
 from app.config import SecuritySettings, load_security_settings
+from app.auth_service import authenticate_admin
 from app.database import get_session, init_db
 from app.kis_config import KisSettings, load_kis_settings
 from app.kis_sync import (
@@ -241,9 +242,60 @@ def access_admin_unlock(
     return response
 
 
+@app.get("/login", response_class=HTMLResponse)
+def login_page(request: Request, error: str | None = Query(default=None)) -> HTMLResponse:
+    role = get_current_role(request, security_settings)
+    return templates.TemplateResponse(
+        "login.html",
+        {
+            "request": request,
+            "error": error,
+            "auth_role": role,
+            "can_write": role == "admin",
+        },
+    )
+
+@app.post("/login", response_class=HTMLResponse)
+def login_submit(
+    request: Request,
+    username: str = Form(...),
+    password: str = Form(...),
+) -> Response:
+    try:
+        check_admin_rate_limit(request)
+    except HTTPException as exc:
+        return templates.TemplateResponse(
+            "login.html",
+            {
+                "request": request,
+                "error": exc.detail,
+                **_template_auth_context(request),
+            },
+            status_code=exc.status_code,
+        )
+
+    if not authenticate_admin(username, password, security_settings):
+        register_admin_failed_attempt(request)
+        return templates.TemplateResponse(
+            "login.html",
+            {
+                "request": request,
+                "error": "아이디 또는 비밀번호가 올바르지 않습니다.",
+                **_template_auth_context(request),
+            },
+            status_code=200,
+        )
+
+    clear_admin_failed_attempts(request)
+    token, expires_at = create_session_token("admin", security_settings)
+    response = RedirectResponse(url="/journal", status_code=303)
+    set_session_cookie(response, token, expires_at)
+    return response
+
+
 @app.post("/logout")
 def logout() -> RedirectResponse:
-    response = RedirectResponse(url="/access", status_code=303)
+    response = RedirectResponse(url="/login", status_code=303)
     clear_session_cookie(response)
     return response
 
@@ -547,7 +599,7 @@ def page_broker_sync(
 ) -> HTMLResponse:
     role = _require_viewer_page_role(request)
     if role != "admin":
-        return RedirectResponse(url="/access", status_code=303)
+        return RedirectResponse(url="/login", status_code=303)
     return templates.TemplateResponse(
         "broker_sync.html",
         {"request": request, **_template_auth_context(request), "status": broker_sync_status(session, kis_settings)},
@@ -572,7 +624,7 @@ def page_journal(
 ) -> HTMLResponse:
     role = _require_viewer_page_role(request)
     if role is None:
-        return RedirectResponse(url="/access", status_code=303)
+        return RedirectResponse(url="/login", status_code=303)
 
     data = build_journal(
         session,
@@ -658,7 +710,7 @@ def page_journal(
 def page_portfolio(request: Request, session: Session = Depends(get_session)) -> HTMLResponse:
     role = _require_viewer_page_role(request)
     if role is None:
-        return RedirectResponse(url="/access", status_code=303)
+        return RedirectResponse(url="/login", status_code=303)
 
     data = build_portfolio(session)
     return templates.TemplateResponse(
@@ -675,7 +727,7 @@ def page_portfolio(request: Request, session: Session = Depends(get_session)) ->
 def page_stats(request: Request, session: Session = Depends(get_session)) -> HTMLResponse:
     role = _require_viewer_page_role(request)
     if role is None:
-        return RedirectResponse(url="/access", status_code=303)
+        return RedirectResponse(url="/login", status_code=303)
 
     data = build_stats(session)
     # Embed monthly-check rows so stats.html can render them inline
@@ -735,7 +787,7 @@ def page_trade_detail(
 ) -> HTMLResponse:
     role = _require_viewer_page_role(request)
     if role is None:
-        return RedirectResponse(url="/access", status_code=303)
+        return RedirectResponse(url="/login", status_code=303)
 
     data = build_trade_detail(session, trade_group_id)
     return templates.TemplateResponse(

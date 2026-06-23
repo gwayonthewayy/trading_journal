@@ -75,15 +75,19 @@
               <button id="theme-toggle-btn" class="theme-toggle-btn" aria-label="Toggle Dark Mode" type="button">
                 <span class="theme-toggle-icon">🌙</span>
               </button>
+              <nav class="user-actions-nav" aria-label="User Settings">
+                <a href="#" class="disabled" aria-disabled="true">계정</a>
+                <a href="#" class="disabled" aria-disabled="true">설정</a>
+              </nav>
               {% if role == "admin" %}
-                <nav class="export-nav" aria-label="Export">
+                <nav class="export-nav" aria-label="Export" style="margin-bottom: 12px;">
                   <a href="/broker-sync" class="{% if path.startswith('/broker-sync') %}active{% endif %}">KIS Sync</a>
                   <a href="/export/events.csv">Events CSV</a>
                   <a href="/export/lots.csv">Lots CSV</a>
                   <a href="/export/sell_allocations.csv">Alloc CSV</a>
                 </nav>
               {% endif %}
-              <div class="auth-pill">{{ role|upper }}</div>
+              <div class="auth-pill" style="margin-bottom: 12px;">{{ role|upper }}</div>
               <span id="username-slot" hidden></span>
               <form method="post" action="/logout" class="logout-form">
                 <button type="submit" class="secondary">Logout</button>

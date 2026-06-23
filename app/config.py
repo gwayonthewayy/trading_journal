@@ -69,6 +69,7 @@ class SecuritySettings:
     auth_version: int
     viewer_session_hours: int
     admin_session_hours: int
+    admin_username: str
 
     @property
     def docs_enabled(self) -> bool:
@@ -86,6 +87,15 @@ def load_security_settings() -> SecuritySettings:
     auth_version = _int_env("TJ_AUTH_VERSION", 1)
     viewer_session_hours = _int_env("TJ_VIEWER_SESSION_HOURS", 168)
     admin_session_hours = _int_env("TJ_ADMIN_SESSION_HOURS", 12)
+
+    admin_username_raw = os.getenv("TJ_ADMIN_USERNAME")
+    if admin_username_raw is not None and admin_username_raw.strip() != "":
+        admin_username = admin_username_raw.strip()
+    else:
+        if env.lower() in ("dev", "test"):
+            admin_username = "admin"
+        else:
+            raise RuntimeError("Missing required environment variable: TJ_ADMIN_USERNAME")
 
     if len(signing_secret.encode("utf-8")) < 32:
         raise RuntimeError("TJ_SIGNING_SECRET must be at least 32 bytes")
@@ -105,4 +115,5 @@ def load_security_settings() -> SecuritySettings:
         auth_version=auth_version,
         viewer_session_hours=viewer_session_hours,
         admin_session_hours=admin_session_hours,
+        admin_username=admin_username,
     )

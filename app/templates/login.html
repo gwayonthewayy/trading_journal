@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block page_header %}
+<section class="page-head">
+  <h1>Sign In</h1>
+  <p>아이디와 비밀번호를 입력하여 로그인하세요.</p>
+</section>
+{% endblock %}
+
+{% block content %}
+<section class="card">
+  <div class="card-head">
+    <h3>Administrator Login</h3>
+    <p>성공하면 관리자 세션이 발급됩니다.</p>
+  </div>
+  <form method="post" action="/login">
+    <label>
+      Username
+      <input type="text" name="username" required autocomplete="username" placeholder="관리자 ID" />
+    </label>
+    <label>
+      Password
+      <input type="password" name="password" required autocomplete="current-password" placeholder="비밀번호" />
+    </label>
+    <button type="submit">Log In</button>
+    {% if error %}
+    <div class="error">Error: {{ error }}</div>
+    {% endif %}
+  </form>
+</section>
+{% endblock %}

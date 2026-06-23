@@ -50,7 +50,7 @@
       <p>Expand each row to see lot-level details.</p>
     </div>
     <div class="table-tool-row">
-      <button id="portfolio-col-btn" type="button" class="secondary">Columns</button>
+      <button id="portfolio-col-btn" type="button" class="secondary pc-only">Columns</button>
       {% if can_write %}
       <button id="portfolio-market-refresh-btn" type="button" class="secondary">Refresh Price/FX</button>
       {% endif %}
@@ -58,10 +58,10 @@
     </div>
   </div>
   {% if can_write %}
-  <p class="small">Tip: In lot details, double-click `Entry/SL/TP/Reason/Note` to edit and press Enter to save.</p>
+  <p class="small pc-only">Tip: In lot details, double-click `Entry/SL/TP/Reason/Note` to edit and press Enter to save.</p>
   {% endif %}
 
-  <div class="table-wrap">
+  <div id="portfolio-desktop-table-wrap" class="table-wrap">
     <table id="portfolio-table">
       <thead>
         <tr>
@@ -254,6 +254,118 @@
       </tbody>
     </table>
   </div>
+
+  <div id="portfolio-mobile-cards">
+    {% for row in data.rows %}
+    <div
+      class="portfolio-ticker-card"
+      data-filter-group="{{ loop.index }}"
+      data-filter-ticker="{{ row.ticker }}"
+      data-filter-market="{{ row.market or '' }}"
+      data-filter-exchange="{{ row.exchange or '' }}"
+      data-filter-currency="{{ row.currency or '' }}"
+      data-filter-name="{{ row.symbol_name or '' }}"
+    >
+      <div class="portfolio-card-header">
+        <strong class="ticker-name">{{ row.ticker }}</strong>
+        <span class="symbol-name">{{ row.symbol_name or "" }}</span>
+      </div>
+      <div class="portfolio-card-metrics">
+        <div class="metric-col">
+          <span class="label">Qty</span>
+          <span class="val">{{ "{:,.4f}".format(row.qty_open) }}</span>
+        </div>
+        <div class="metric-col">
+          <span class="label">Avg Entry</span>
+          <span class="val">{{ row.currency_symbol }}{{ "{:,.4f}".format(row.avg_entry_price_local if row.avg_entry_price_local is defined else row.avg_entry_price) }}</span>
+        </div>
+        <div class="metric-col">
+          <span class="label">Cost Amount</span>
+          <span class="val">{{ row.currency_symbol }}{{ "{:,.2f}".format(row.amount_cost_local if row.amount_cost_local is defined else row.amount_cost) }}</span>
+        </div>
+        <div class="metric-col">
+          <span class="label">Open Risk</span>
+          <span class="val">{{ row.currency_symbol }}{{ "{:,.2f}".format(row.open_risk_local if row.open_risk_local is defined else row.open_risk) }}</span>
+        </div>
+        <div class="metric-col">
+          <span class="label">SL / TP</span>
+          <span class="val">{{ row.sl_tp }}</span>
+        </div>
+      </div>
+      <details>
+        <summary>Lots for {{ row.ticker }}</summary>
+        <div class="lot-list">
+          {% for lot in row.lots %}
+          <div
+            class="portfolio-lot-row mobile-lot-card"
+            data-lot-id="{{ lot.lot_id }}"
+            data-buy-event-id="{{ lot.buy_event_id or '' }}"
+            data-entry-price="{{ lot.entry_price }}"
+            data-sl="{{ lot.sl if lot.sl is not none else '' }}"
+            data-tp="{{ lot.tp if lot.tp is not none else '' }}"
+            data-buy-reason="{{ lot.buy_reason or '' }}"
+            data-note="{{ lot.note or '' }}"
+          >
+            <div class="lot-head">
+              <strong>Lot {{ lot.lot_id }}</strong>
+              <span class="small">{{ lot.opened_at }}</span>
+            </div>
+            <div class="lot-stats">
+              Qty: {{ "{:,.4f}".format(lot.qty_open) }} |
+              Risk: {{ lot.currency_symbol if lot.currency_symbol is defined else "" }}{{ "{:,.2f}".format(lot.open_risk_local if lot.open_risk_local is defined else lot.open_risk) }}
+            </div>
+            <div class="lot-editable-grid">
+              <div class="editable-item" data-inline-portfolio-field="entry_price">
+                <label>Entry</label>
+                <div class="val">{{ lot.currency_symbol if lot.currency_symbol is defined else "" }}{{ "{:,.4f}".format(lot.entry_price) }}</div>
+              </div>
+              <div class="editable-item" data-inline-portfolio-field="sl">
+                <label>SL</label>
+                <div class="val">{{ lot.sl_display }}</div>
+              </div>
+              <div class="editable-item" data-inline-portfolio-field="tp">
+                <label>TP</label>
+                <div class="val">{{ lot.tp_display }}</div>
+              </div>
+            </div>
+            <div class="editable-item" data-inline-portfolio-field="buy_reason">
+              <label>Reason</label>
+              <div class="val">{{ lot.buy_reason or "-" }}</div>
+            </div>
+            <div class="editable-item" data-inline-portfolio-field="note">
+              <label>Note</label>
+              <div class="val">{{ lot.note or "-" }}</div>
+            </div>
+
+            {% if can_write %}
+            <div class="lot-edit-controls" data-lot-id="{{ lot.lot_id }}">
+              <input
+                type="number"
+                step="0.0001"
+                min="0"
+                class="lot-sl-input"
+                value="{{ lot.sl if lot.sl is not none else '' }}"
+                placeholder="SL"
+              />
+              <input
+                type="number"
+                step="0.0001"
+                min="0"
+                class="lot-tp-input"
+                value="{{ lot.tp if lot.tp is not none else '' }}"
+                placeholder="TP"
+              />
+              <button type="button" class="secondary lot-save-btn">Save</button>
+              <div class="small lot-save-msg" aria-live="polite"></div>
+            </div>
+            {% endif %}
+          </div>
+          {% endfor %}
+        </div>
+      </details>
+    </div>
+    {% endfor %}
+  </div>
 </section>
 {% endblock %}
 
@@ -278,6 +390,8 @@
   const portfolioMarketRefreshBtn = document.getElementById("portfolio-market-refresh-btn");
   const portfolioMarketStatus = document.getElementById("portfolio-market-status");
   const detailRowByGroup = new Map(portfolioDetailRows.map((row) => [row.dataset.filterGroup, row]));
+  const portfolioMobileCards = Array.from(document.querySelectorAll("div.portfolio-ticker-card[data-filter-group]"));
+  const mobileCardByGroup = new Map(portfolioMobileCards.map((card) => [card.dataset.filterGroup, card]));
   const PORTFOLIO_COLUMN_PREF_KEY = "tj_portfolio_columns_v2";
   const PORTFOLIO_COLUMNS = [
     { index: 1, label: "Ticker" },
@@ -333,6 +447,11 @@
 
   function isPortfolioColumnVisible(index) {
     const key = String(index);
+    const isMobile = window.innerWidth <= 768;
+    // Mobile mandatory: Ticker(1), Name(2), Qty(5), Avg Entry(6)
+    if (isMobile && [1, 2, 5, 6].includes(index)) {
+      return true;
+    }
     if (!(key in portfolioColumnPrefs)) return true;
     return portfolioColumnPrefs[key] !== false;
   }
@@ -424,14 +543,45 @@
   async function loadPortfolioMarketStatus() {
     if (!portfolioMarketStatus) return;
     try {
-      const status = await requestJson("/api/market-data/status", "GET");
-      const quoteAge = status.quote_latest_age_sec;
-      const fxAge = status.fx_latest_age_sec;
-      const quoteText = quoteAge === null || quoteAge === undefined ? "N/A" : `${quoteAge}s`;
-      const fxText = fxAge === null || fxAge === undefined ? "N/A" : `${fxAge}s`;
-      portfolioMarketStatus.textContent = `Market data: Quotes ${status.quote_entries} (age ${quoteText}), FX ${status.fx_entries} (age ${fxText})`;
+      if (sessionStorage.getItem("portfolioMarketRefreshSuccess")) {
+        sessionStorage.removeItem("portfolioMarketRefreshSuccess");
+        portfolioMarketStatus.textContent = "업데이트 완료";
+        portfolioMarketStatus.className = "small success";
+        setTimeout(() => {
+          void loadPortfolioMarketStatus();
+        }, 3000);
+        return;
+      }
+      await loadPortfolioMarketStatusReal();
     } catch (_) {
-      portfolioMarketStatus.textContent = "Market data: status unavailable";
+      portfolioMarketStatus.textContent = "데이터를 불러올 수 없습니다";
+      portfolioMarketStatus.className = "small error";
+    }
+  }
+
+  async function loadPortfolioMarketStatusReal() {
+    const status = await requestJson("/api/market-data/status", "GET");
+    const quoteAge = status.quote_latest_age_sec;
+    const fxAge = status.fx_latest_age_sec;
+
+    if (quoteAge === null || fxAge === null || quoteAge === undefined || fxAge === undefined ||
+        !status.quote_entries || status.quote_entries <= 0 ||
+        !status.fx_entries || status.fx_entries <= 0) {
+      portfolioMarketStatus.textContent = "데이터를 불러올 수 없습니다";
+      portfolioMarketStatus.className = "small error";
+      return;
+    }
+
+    const quoteText = `${quoteAge}s`;
+    const fxText = `${fxAge}s`;
+    const statusText = `Market data: Quotes ${status.quote_entries} (age ${quoteText}), FX ${status.fx_entries} (age ${fxText})`;
+
+    if (quoteAge > 300 || fxAge > 300) {
+      portfolioMarketStatus.textContent = "데이터 지연 | " + statusText;
+      portfolioMarketStatus.className = "small warning";
+    } else {
+      portfolioMarketStatus.textContent = statusText;
+      portfolioMarketStatus.className = "small";
     }
   }
 
@@ -588,6 +738,10 @@
       row.hidden = !visible;
       const detailRow = detailRowByGroup.get(row.dataset.filterGroup || "");
       if (detailRow) detailRow.hidden = !visible;
+
+      const mobileCard = mobileCardByGroup.get(row.dataset.filterGroup || "");
+      if (mobileCard) mobileCard.hidden = !visible;
+
       if (visible) shown += 1;
     }
 
@@ -650,10 +804,14 @@
   portfolioMarketRefreshBtn?.addEventListener("click", async () => {
     try {
       portfolioMarketRefreshBtn.disabled = true;
+      portfolioMarketStatus.textContent = "데이터 갱신 중...";
+      portfolioMarketStatus.className = "small";
       await requestJson("/api/market-data/refresh", "POST");
-      await loadPortfolioMarketStatus();
+      sessionStorage.setItem("portfolioMarketRefreshSuccess", "1");
       window.location.reload();
     } catch (err) {
+      portfolioMarketStatus.textContent = "업데이트 실패";
+      portfolioMarketStatus.className = "small error";
       window.alert(`Refresh failed: ${err.message}`);
     } finally {
       portfolioMarketRefreshBtn.disabled = false;
@@ -715,13 +873,15 @@
     note: "Note",
   };
 
-  function readLotInlineCurrentValue(lotRow, field) {
-    if (!lotRow) return "";
-    if (field === "entry_price") return String(lotRow.dataset.entryPrice || "");
-    if (field === "sl") return String(lotRow.dataset.sl || "");
-    if (field === "tp") return String(lotRow.dataset.tp || "");
-    if (field === "buy_reason") return String(lotRow.dataset.buyReason || "");
-    if (field === "note") return String(lotRow.dataset.note || "");
+  function readLotInlineCurrentValueByCell(cell, field) {
+    if (!cell) return "";
+    const container = cell.closest("[data-lot-id]");
+    if (!container) return "";
+    if (field === "entry_price") return String(container.dataset.entryPrice || "");
+    if (field === "sl") return String(container.dataset.sl || "");
+    if (field === "tp") return String(container.dataset.tp || "");
+    if (field === "buy_reason") return String(container.dataset.buyReason || "");
+    if (field === "note") return String(container.dataset.note || "");
     return "";
   }
 
@@ -735,47 +895,69 @@
     return num;
   }
 
+  function editLotField(lotId, buyEventId, field, label, currentValue) {
+    const edited = window.prompt(`${label} (press Enter to save)`, currentValue);
+    if (edited === null) return;
+
+    (async () => {
+      try {
+        if (field === "sl" || field === "tp") {
+          const next = parseInlineNumber(edited, label, false);
+          await postJson("/api/lot/sl", {
+            lot_id: lotId,
+            ...(field === "sl" ? { new_sl: next } : { new_tp: next }),
+          });
+        } else if (field === "entry_price") {
+          if (!buyEventId) throw new Error("linked BUY event not found");
+          const next = parseInlineNumber(edited, label, true);
+          await patchJson(`/api/events/${buyEventId}`, { price: next });
+        } else if (field === "buy_reason") {
+          if (!buyEventId) throw new Error("linked BUY event not found");
+          const next = String(edited || "").trim();
+          await patchJson(`/api/events/${buyEventId}`, { reason: next || null });
+        } else if (field === "note") {
+          if (!buyEventId) throw new Error("linked BUY event not found");
+          const next = String(edited || "").trim();
+          await patchJson(`/api/events/${buyEventId}`, { note: next || null });
+        }
+        window.location.reload();
+      } catch (err) {
+        window.alert(`Inline edit failed: ${err.message}`);
+      }
+    })();
+  }
+
   portfolioTable?.addEventListener("dblclick", async (e) => {
     const cell = e.target?.closest ? e.target.closest("[data-inline-portfolio-field]") : null;
     if (!cell) return;
+    const container = cell.closest("[data-lot-id]");
+    if (!container) return;
 
-    const lotRow = cell.closest("tr.portfolio-lot-row");
-    if (!lotRow) return;
-
-    const lotId = Number(lotRow.dataset.lotId || "");
-    const buyEventId = Number(lotRow.dataset.buyEventId || "");
+    const lotId = Number(container.dataset.lotId || "");
+    const buyEventId = Number(container.dataset.buyEventId || "");
     const field = String(cell.dataset.inlinePortfolioField || "");
     const label = inlineLotFieldLabel[field] || field;
     if (!lotId || !field) return;
 
-    const currentValue = readLotInlineCurrentValue(lotRow, field);
-    const edited = window.prompt(`${label} (press Enter to save)`, currentValue);
-    if (edited === null) return;
+    const currentValue = readLotInlineCurrentValueByCell(cell, field);
+    editLotField(lotId, buyEventId, field, label, currentValue);
+  });
 
-    try {
-      if (field === "sl" || field === "tp") {
-        const next = parseInlineNumber(edited, label, false);
-        await postJson("/api/lot/sl", {
-          lot_id: lotId,
-          ...(field === "sl" ? { new_sl: next } : { new_tp: next }),
-        });
-      } else if (field === "entry_price") {
-        if (!buyEventId) throw new Error("linked BUY event not found");
-        const next = parseInlineNumber(edited, label, true);
-        await patchJson(`/api/events/${buyEventId}`, { price: next });
-      } else if (field === "buy_reason") {
-        if (!buyEventId) throw new Error("linked BUY event not found");
-        const next = String(edited || "").trim();
-        await patchJson(`/api/events/${buyEventId}`, { reason: next || null });
-      } else if (field === "note") {
-        if (!buyEventId) throw new Error("linked BUY event not found");
-        const next = String(edited || "").trim();
-        await patchJson(`/api/events/${buyEventId}`, { note: next || null });
-      }
-      window.location.reload();
-    } catch (err) {
-      window.alert(`Inline edit failed: ${err.message}`);
-    }
+  const portfolioMobileCardsContainer = document.getElementById("portfolio-mobile-cards");
+  portfolioMobileCardsContainer?.addEventListener("click", async (e) => {
+    const cell = e.target?.closest ? e.target.closest("[data-inline-portfolio-field]") : null;
+    if (!cell) return;
+    const container = cell.closest("[data-lot-id]");
+    if (!container) return;
+
+    const lotId = Number(container.dataset.lotId || "");
+    const buyEventId = Number(container.dataset.buyEventId || "");
+    const field = String(cell.dataset.inlinePortfolioField || "");
+    const label = inlineLotFieldLabel[field] || field;
+    if (!lotId || !field) return;
+
+    const currentValue = readLotInlineCurrentValueByCell(cell, field);
+    editLotField(lotId, buyEventId, field, label, currentValue);
   });
 
   document.querySelectorAll(".lot-edit-controls").forEach((wrap) => {

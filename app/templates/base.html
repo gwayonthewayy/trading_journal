@@ -8,7 +8,8 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <title>{{ title or "Trade Journal" }}</title>
   <link rel="manifest" href="/static/manifest.webmanifest" />
-  <link rel="stylesheet" href="/static/style.css" />
+  <link rel="stylesheet" href="/static/style.css?v=20260622-a1-4" />
+  <!-- Update 'v' query string on CSS changes to bypass CDN/browser cache -->
   <script>
     (function() {
       const savedTheme = localStorage.getItem("tj-theme") || "dark";
@@ -32,46 +33,86 @@
     <div class="topbar-inner">
       <a href="{{ '/journal' if role else '/access' }}" class="brand">
         <span class="brand-mark">TJ</span>
-        <span>
+        <span class="pc-only">
           <strong>Trade Journal</strong>
           <small>Execution and Review</small>
+        </span>
+        <span class="mobile-only">
+          <strong>
+            {% if role and path.startswith('/journal') %}매매일지
+            {% elif role and path.startswith('/portfolio') %}포트폴리오
+            {% elif role and path.startswith('/stats') %}분석
+            {% else %}Trade Journal{% endif %}
+          </strong>
         </span>
       </a>
 
       {% if role %}
-        <nav class="main-nav" aria-label="Primary">
+        <nav class="main-nav pc-only" aria-label="Primary">
           <a href="/journal" class="{% if path.startswith('/journal') %}active{% endif %}">Journal</a>
           <a href="/portfolio" class="{% if path.startswith('/portfolio') %}active{% endif %}">Portfolio</a>
           <a href="/stats" class="{% if path.startswith('/stats') %}active{% endif %}">Stats</a>
           <a href="/monthly-check" class="{% if path.startswith('/monthly-check') %}active{% endif %}">Monthly Check</a>
-          {% if role == "admin" %}
-            <a href="/broker-sync" class="{% if path.startswith('/broker-sync') %}active{% endif %}">KIS Sync</a>
-          {% endif %}
         </nav>
       {% else %}
-        <div></div>
+        <div class="pc-only"></div>
       {% endif %}
 
       <div class="topbar-actions">
-        <button id="theme-toggle-btn" class="theme-toggle-btn" aria-label="Toggle Dark Mode" type="button" style="border:1px solid var(--line); background:var(--surface); border-radius:999px; cursor:pointer; font-size:1rem; padding:6px 10px; display:flex; align-items:center; justify-content:center; gap:6px; color:var(--text); transition:160ms ease;">
+        {% if role %}
+        <button id="user-menu-trigger" class="secondary user-menu-trigger-btn" aria-controls="user-menu-drawer" aria-expanded="false" aria-label="Open User Menu">
+          <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
+        </button>
+
+        <div id="user-menu-drawer" class="user-menu-drawer" aria-hidden="true" inert hidden>
+          <div class="user-menu-overlay" id="user-menu-overlay" tabindex="-1"></div>
+          <div class="user-menu-panel" role="dialog" aria-modal="true" aria-label="User Menu">
+            <div class="user-menu-header">
+              <strong>메뉴</strong>
+              <button type="button" id="user-menu-close" aria-label="Close User Menu" class="secondary user-menu-close-btn">✕</button>
+            </div>
+            <div class="user-menu-body">
+              <button id="theme-toggle-btn" class="theme-toggle-btn" aria-label="Toggle Dark Mode" type="button">
+                <span class="theme-toggle-icon">🌙</span>
+              </button>
+              {% if role == "admin" %}
+                <nav class="export-nav" aria-label="Export">
+                  <a href="/broker-sync" class="{% if path.startswith('/broker-sync') %}active{% endif %}">KIS Sync</a>
+                  <a href="/export/events.csv">Events CSV</a>
+                  <a href="/export/lots.csv">Lots CSV</a>
+                  <a href="/export/sell_allocations.csv">Alloc CSV</a>
+                </nav>
+              {% endif %}
+              <div class="auth-pill">{{ role|upper }}</div>
+              <span id="username-slot" hidden></span>
+              <form method="post" action="/logout" class="logout-form">
+                <button type="submit" class="secondary">Logout</button>
+              </form>
+            </div>
+          </div>
+        </div>
+        {% else %}
+        <button id="theme-toggle-btn" class="theme-toggle-btn" aria-label="Toggle Dark Mode" type="button">
           <span class="theme-toggle-icon">🌙</span>
         </button>
-        {% if role == "admin" %}
-          <nav class="export-nav" aria-label="Export">
-            <a href="/export/events.csv">Events CSV</a>
-            <a href="/export/lots.csv">Lots CSV</a>
-            <a href="/export/sell_allocations.csv">Alloc CSV</a>
-          </nav>
-        {% endif %}
-        {% if role %}
-          <div class="auth-pill">{{ role|upper }}</div>
-          <form method="post" action="/logout" class="logout-form">
-            <button type="submit" class="secondary">Logout</button>
-          </form>
         {% endif %}
       </div>
     </div>
   </header>
+
+  {% if role %}
+  <nav class="bottom-nav mobile-only">
+    <a href="/journal" {% if path.startswith('/journal') %}class="active" aria-current="page"{% endif %}>
+      매매일지
+    </a>
+    <a href="/portfolio" {% if path.startswith('/portfolio') %}class="active" aria-current="page"{% endif %}>
+      포트폴리오
+    </a>
+    <a href="/stats" {% if path.startswith('/stats') %}class="active" aria-current="page"{% endif %}>
+      분석
+    </a>
+  </nav>
+  {% endif %}
   <div id="install-banner" class="install-banner" hidden>
     <div class="install-banner-inner">
       <strong>Trade Journal을 홈화면에 추가</strong>
@@ -167,6 +208,93 @@
     })();
   </script>
   <script src="/static/apexcharts.min.js"></script>
+  <script>
+    (() => {
+      const trigger = document.getElementById('user-menu-trigger');
+      const drawer = document.getElementById('user-menu-drawer');
+      const closeBtn = document.getElementById('user-menu-close');
+      const overlay = document.getElementById('user-menu-overlay');
+
+      if (!trigger || !drawer) return;
+
+      let originalBodyOverflow = '';
+      let transitionTimer = null;
+      let transitionHandler = null;
+      const panel = drawer.querySelector('.user-menu-panel');
+
+      function clearCloseListeners() {
+        if (transitionTimer) { clearTimeout(transitionTimer); transitionTimer = null; }
+        if (transitionHandler && panel) { panel.removeEventListener('transitionend', transitionHandler); transitionHandler = null; }
+      }
+
+      function openMenu() {
+        clearCloseListeners();
+        drawer.hidden = false;
+        void drawer.offsetWidth;
+        drawer.classList.add('is-open');
+        drawer.setAttribute('aria-hidden', 'false');
+        drawer.inert = false;
+        trigger.setAttribute('aria-expanded', 'true');
+        originalBodyOverflow = document.body.style.overflow;
+        document.body.style.overflow = 'hidden';
+        if (closeBtn) closeBtn.focus();
+      }
+
+      function closeMenu() {
+        clearCloseListeners();
+        drawer.classList.remove('is-open');
+
+        function finalizeClose() {
+          drawer.hidden = true;
+          drawer.inert = true;
+          drawer.setAttribute('aria-hidden', 'true');
+          trigger.setAttribute('aria-expanded', 'false');
+          document.body.style.overflow = originalBodyOverflow;
+          clearCloseListeners();
+        }
+
+        transitionHandler = (e) => {
+          if (e.target === panel && !drawer.classList.contains('is-open')) {
+            finalizeClose();
+          }
+        };
+
+        if (panel) {
+          panel.addEventListener('transitionend', transitionHandler);
+        }
+        transitionTimer = setTimeout(() => {
+          if (!drawer.classList.contains('is-open')) {
+            finalizeClose();
+          }
+        }, 300);
+
+        trigger.focus();
+      }
+
+      trigger.addEventListener('click', openMenu);
+      if (closeBtn) closeBtn.addEventListener('click', closeMenu);
+      if (overlay) overlay.addEventListener('click', closeMenu);
+
+      drawer.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+          closeMenu();
+        } else if (e.key === 'Tab') {
+          const focusable = drawer.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
+          if (focusable.length) {
+            const first = focusable[0];
+            const last = focusable[focusable.length - 1];
+            if (e.shiftKey && document.activeElement === first) {
+              e.preventDefault();
+              last.focus();
+            } else if (!e.shiftKey && document.activeElement === last) {
+              e.preventDefault();
+              first.focus();
+            }
+          }
+        }
+      });
+    })();
+  </script>
   {% block scripts %}{% endblock %}
 </body>
 </html>

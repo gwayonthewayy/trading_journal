@@ -1,8 +1,8 @@
 {% extends "base.html" %}
 {% block page_header %}
 <section class="page-head">
-  <h1>Performance Stats</h1>
-  <p>Method 1은 단순 자산대비 수익률, Method 2는 입출금 시점을 가중한 자본(base) 대비 수익률입니다.</p>
+  <h1>분석</h1>
+  <p>Method 2(시간가중 수익률)를 기본으로 표시합니다. M1(단순)은 고급 지표에서 확인하세요.</p>
 </section>
 {% endblock %}
 
@@ -105,27 +105,22 @@
 </section>
 
 <section class="card">
-  <h3>Return Chart (Daily)</h3>
-  <p class="small">X: 기간, Y: 수익률(%). 주황(단순), 청록(시간가중), 녹색(벤치마크)</p>
-  <div id="chart-daily" class="chart-wrap"></div>
-</section>
-
-<section class="card">
-  <h3>Return Chart (Weekly)</h3>
-  <p class="small">X: 기간, Y: 수익률(%). 주황(단순), 청록(시간가중), 녹색(벤치마크)</p>
-  <div id="chart-weekly" class="chart-wrap"></div>
-</section>
-
-<section class="card">
-  <h3>Return Chart (Monthly)</h3>
-  <p class="small">X: 기간, Y: 수익률(%). 주황(단순), 청록(시간가중), 녹색(벤치마크)</p>
-  <div id="chart-monthly" class="chart-wrap"></div>
-</section>
-
-<section class="card">
-  <h3>Return Chart (Yearly)</h3>
-  <p class="small">X: 기간, Y: 수익률(%). 주황(단순), 청록(시간가중), 녹색(벤치마크)</p>
-  <div id="chart-yearly" class="chart-wrap"></div>
+  <div class="card-head">
+    <h3>수익률 차트</h3>
+    <p class="small">Y: 수익률(%). 청록(시간가중 M2), 녹색(벤치마크), 주황(단순 M1)</p>
+  </div>
+  <div class="stats-tab-row" role="tablist" aria-label="수익률 기간 선택">
+    <button class="stats-tab is-active" data-period="daily" role="tab" aria-selected="true" id="tab-daily" aria-controls="chart-unified">일간</button>
+    <button class="stats-tab" data-period="weekly" role="tab" aria-selected="false" id="tab-weekly" aria-controls="chart-unified">주간</button>
+    <button class="stats-tab" data-period="monthly" role="tab" aria-selected="false" id="tab-monthly" aria-controls="chart-unified">월간</button>
+    <button class="stats-tab" data-period="yearly" role="tab" aria-selected="false" id="tab-yearly" aria-controls="chart-unified">연간</button>
+  </div>
+  <div id="chart-unified" class="chart-wrap" role="tabpanel" aria-labelledby="tab-daily"></div>
+  <!-- Legacy IDs for JS backwards compatibility -->
+  <div id="chart-daily" hidden></div>
+  <div id="chart-weekly" hidden></div>
+  <div id="chart-monthly" hidden></div>
+  <div id="chart-yearly" hidden></div>
 </section>
 
 <section class="card">
@@ -374,7 +369,49 @@
     </table>
   </div>
 </section>
+
+<section class="card" id="stats-monthly-check">
+  <div class="card-head">
+    <h3>Monthly Check</h3>
+    <p>월별 닫힌 거래(SELL 체결 기준) 통계입니다.</p>
+  </div>
+  {% if data.monthly_check_rows is defined and data.monthly_check_rows %}
+  <div class="table-wrap">
+    <table class="monthly-check-table">
+      <thead>
+        <tr>
+          <th>Year-Month</th>
+          <th>Avg Profit</th>
+          <th>Avg Loss</th>
+          <th>Win Rate</th>
+          <th>Success/Failure</th>
+          <th>Max Profit</th>
+          <th>Max Loss</th>
+          <th>Trades</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in data.monthly_check_rows %}
+        <tr>
+          <td>{{ row.month_label }}</td>
+          <td>{{ "%.2f"|format(row.avg_profit_pct) if row.avg_profit_pct is not none else "-" }}%</td>
+          <td>{{ "%.2f"|format(row.avg_loss_pct) if row.avg_loss_pct is not none else "-" }}%</td>
+          <td>{{ "%.2f"|format(row.win_rate_pct) if row.win_rate_pct is not none else "-" }}%</td>
+          <td>{{ "%.2f"|format(row.success_failure_ratio) if row.success_failure_ratio is not none else "-" }}</td>
+          <td>{{ "%.2f"|format(row.max_profit_pct) if row.max_profit_pct is not none else "-" }}%</td>
+          <td>{{ "%.2f"|format(row.max_loss_pct) if row.max_loss_pct is not none else "-" }}%</td>
+          <td>{{ row.trade_count }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="small">Monthly check 데이터가 없습니다.</p>
+  {% endif %}
+</section>
 {% endblock %}
+
 
 {% block scripts %}
 <script>
@@ -1007,27 +1044,29 @@
     const options = {
       series: [
         {
-          name: mode === "cumulative" ? "단순 누적" : "단순 수익률",
-          data: m1Data
-        },
-        {
-          name: mode === "cumulative" ? "시간가중 누적" : "시간가중 수익률",
+          name: mode === "cumulative" ? "시간가중 누적 M2" : "시간가중 M2",
           data: m2Data
         },
         {
           name: benchmarkSymbol || "Benchmark",
           data: bmData
+        },
+        {
+          name: mode === "cumulative" ? "단순 누적 M1" : "단순 M1",
+          data: m1Data
         }
       ],
       chart: {
         type: 'area',
-        height: 320,
+        height: 300,
         toolbar: { show: false },
         zoom: { enabled: false },
-        background: 'transparent'
+        background: 'transparent',
+        redrawOnParentResize: true,
+        redrawOnWindowResize: true
       },
       dataLabels: { enabled: false },
-      colors: getChartSeriesColors(targetId, chartTheme),
+      colors: [getChartThemeColors().primary, getChartThemeColors().positive, getChartThemeColors().accent],
       fill: {
         type: 'gradient',
         gradient: {
@@ -1039,13 +1078,13 @@
       },
       stroke: {
         curve: 'smooth',
-        width: [2.5, 2.5, 2.0],
-        dashArray: [0, 0, 4]
+        width: [2.5, 2.0, 1.5],
+        dashArray: [0, 4, 6]
       },
       grid: {
         borderColor: gridThemeColor,
         strokeDashArray: 4,
-        padding: { right: 20, left: 10 }
+        padding: { right: 8, left: 8 }
       },
       theme: {
         mode: isDark ? 'dark' : 'light'
@@ -1053,7 +1092,12 @@
       xaxis: {
         categories: categories,
         labels: {
-          style: { colors: textThemeColor, fontSize: '10px' }
+          style: { colors: textThemeColor, fontSize: '10px' },
+          rotate: -30,
+          rotateAlways: false,
+          hideOverlappingLabels: true,
+          trim: true,
+          maxHeight: 40
         },
         axisBorder: { show: false },
         axisTicks: { show: false }
@@ -1073,13 +1117,54 @@
       },
       legend: {
         position: 'top',
-        horizontalAlign: 'right',
+        horizontalAlign: 'left',
         labels: { colors: chartTheme.legend }
-      }
+      },
+      responsive: [
+        {
+          breakpoint: 768,
+          options: {
+            chart: { height: 220 },
+            legend: { show: false },
+            xaxis: {
+              tickAmount: 5,
+              labels: { 
+                rotate: 0,
+                rotateAlways: false,
+                style: { fontSize: '10px' } 
+              }
+            }
+          }
+        }
+      ]
     };
 
     await renderApexChartWithLifecycle(targetId, options);
   }
+
+  // ── Unified return chart tab state ─────────────────────────────────
+  let unifiedPeriod = 'daily';
+  const periodTabs = Array.from(document.querySelectorAll('.stats-tab[data-period]'));
+  const chartUnifiedHolder = document.getElementById('chart-unified');
+
+  function updatePeriodTabs() {
+    periodTabs.forEach((btn) => {
+      const active = btn.dataset.period === unifiedPeriod;
+      btn.classList.toggle('is-active', active);
+      btn.setAttribute('aria-selected', active ? 'true' : 'false');
+    });
+    if (chartUnifiedHolder) {
+      chartUnifiedHolder.setAttribute('aria-labelledby', `tab-${unifiedPeriod}`);
+    }
+  }
+
+  periodTabs.forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      unifiedPeriod = btn.dataset.period;
+      updatePeriodTabs();
+      await renderFilteredCharts();
+    });
+  });
 
   const startInput = document.getElementById("chart-start-date");
   const endInput = document.getElementById("chart-end-date");
@@ -1267,10 +1352,22 @@
     const monthlyMerged = attachBenchmark(monthly, bmMonthly);
     const yearlyMerged = attachBenchmark(yearly, bmYearly);
 
-    await renderReturnChart("chart-daily", dailyMerged, "Daily Return %", benchmarkPayload.symbol, chartMode);
-    await renderReturnChart("chart-weekly", weeklyMerged, "Weekly Return %", benchmarkPayload.symbol, chartMode);
-    await renderReturnChart("chart-monthly", monthlyMerged, "Monthly Return %", benchmarkPayload.symbol, chartMode);
-    await renderReturnChart("chart-yearly", yearlyMerged, "Yearly Return %", benchmarkPayload.symbol, chartMode);
+    // Render only the active period tab into the unified chart holder
+    const periodMap = {
+      daily: dailyMerged,
+      weekly: weeklyMerged,
+      monthly: monthlyMerged,
+      yearly: yearlyMerged,
+    };
+    const periodLabel = { daily: '일간', weekly: '주간', monthly: '월간', yearly: '연간' };
+    await renderReturnChart(
+      "chart-unified",
+      periodMap[unifiedPeriod],
+      periodLabel[unifiedPeriod] + " Return %",
+      benchmarkPayload.symbol,
+      chartMode
+    );
+
     await renderDistributionChart(
       {
         daily: dailyMerged,

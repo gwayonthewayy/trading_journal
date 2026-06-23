@@ -167,6 +167,21 @@
   - Reboot recovery validation: **Deferred** (pending scheduled server maintenance to avoid disrupting active user sessions and agent processes).
   - KIS activation: **Separate step** (not enabled under current scope).
 
+### 2026-06-23T07:22:00Z - A4 Mobile Portfolio Verification
+- **Verification Method**: Human-Assisted Verification
+- **Outcome**: PASS
+- **Verified Areas**:
+  - Mobile portfolio card UI rendered correctly.
+  - Holdings and lot details correctly displayed in an accordion.
+  - Horizontal scrolling issues resolved.
+  - Columns button and PC-specific tip safely hidden on mobile.
+  - Refresh Price/FX status indicators properly display loading, success, delay, and error states.
+  - Overall mobile UX satisfaction is confirmed.
 
-
-
+### 2026-06-23T13:25:00Z - Runtime Token Rotation and Service Normalization
+- **Actions Performed:**
+  - Runtime auth token rotation completed atomically.
+  - The trading-journal.service restarted by user.
+  - 127.0.0.1:8000 LISTEN confirmed.
+  - /access HTTP 200 confirmed.
+- **Note:** No token values or actual secrets are recorded in this log or git history.

@@ -21,17 +21,19 @@ class StatsTemplateAndThemeTests(unittest.TestCase):
 
     def test_stats_template_keeps_korean_copy_and_chart_labels_intact(self):
         expected_copy = [
-            "Method 1은 단순 자산대비 수익률",
+            # A3: page header now uses M2-first description
+            "Method 2(시간가중 수익률)를 기본으로 표시합니다",
             "기간과 벤치마크를 바꿔 수익률 곡선을 비교합니다.",
-            'name: mode === "cumulative" ? "단순 누적" : "단순 수익률",',
-            'name: mode === "cumulative" ? "시간가중 누적" : "시간가중 수익률",',
+            # A3: M2 is now primary, M1 secondary
+            'name: mode === "cumulative" ? "시간가중 누적 M2" : "시간가중 M2",',
+            'name: mode === "cumulative" ? "단순 누적 M1" : "단순 M1",',
         ]
 
         for text in expected_copy:
             with self.subTest(text=text):
                 self.assertIn(text, self.stats_template)
 
-        mojibake_markers = ("?⑥", "?쒖", "?섏", "?먯", "湲곌", "媛", "紐⑤")
+        mojibake_markers = ("?⑥", "?쒖", "?섏", "?먯", "湲곌", "媛", "紐⑤")
         for marker in mojibake_markers:
             with self.subTest(marker=marker):
                 self.assertNotIn(marker, self.stats_template)
@@ -44,6 +46,13 @@ class StatsTemplateAndThemeTests(unittest.TestCase):
 
     def test_stats_charts_disable_overlapping_data_labels(self):
         self.assertEqual(self.stats_template.count("dataLabels: { enabled: false }"), 4)
+
+    def test_stats_charts_mobile_readability_options(self):
+        # A3 Requirement: tick limit, overlap hiding, no rotation
+        self.assertIn("hideOverlappingLabels: true,", self.stats_template)
+        self.assertIn("tickAmount: 5,", self.stats_template)
+        # Verify rotate: 0 is in the responsive options
+        self.assertTrue(re.search(r"responsive: \[.*?tickAmount: 5.*?rotate: 0", self.stats_template, re.DOTALL))
 
     def test_filter_and_image_styles_use_theme_tokens(self):
         selectors = {

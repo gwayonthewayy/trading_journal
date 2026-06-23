@@ -1,4 +1,7 @@
 {% extends "base.html" %}
+
+{% set ENABLE_QUICK_IMAGE_ATTACH = false %}
+
 {% block page_header %}
 <section class="page-head">
   <h1>Trading Journal</h1>
@@ -352,7 +355,7 @@
       <h3>Event Journal</h3>
       <p>기록 검색과 타입별 필터</p>
     </div>
-    <div class="table-tool-row">
+    <div class="table-tool-row hidden-mobile">
       <button id="journal-col-btn" type="button" class="secondary">Columns</button>
       <button id="journal-save-preset-btn" type="button" class="secondary">Save Filter</button>
       <button id="journal-load-preset-btn" type="button" class="secondary">Load Filter</button>
@@ -409,7 +412,7 @@
   </div>
   <p id="journal-summary" class="small">Showing {{ data.events|length }} / {{ data.filtered_events }} filtered events ({{ data.total_all_events }} total)</p>
   <div id="action-feedback" class="action-feedback" hidden></div>
-  {% if can_write %}
+  {% if can_write and ENABLE_QUICK_IMAGE_ATTACH %}
     <p class="small">Tip: 이벤트 행을 클릭하면 선택됩니다. 선택 후 갤러리/카메라 업로드를 누르세요.</p>
     <div class="card quick-attach-panel">
       <div class="card-head">
@@ -462,7 +465,7 @@
     {% endif %}
   </div>
 
-  <div class="table-wrap">
+  <div class="table-wrap hidden-mobile">
     <table id="journal-table">
       <thead>
         <tr>
@@ -657,7 +660,7 @@
 
   <div id="journal-mobile-cards" class="journal-mobile-cards">
     {% for e in data.events %}
-    <article class="journal-mobile-card" data-event-id="{{ e.id }}">
+    <article class="journal-mobile-card" data-event-id="{{ e.id }}" data-event-image-urls='{{ e.image_urls | tojson }}'>
       <div class="journal-mobile-card-head">
         <strong>#{{ e.id }} {{ e.type }}</strong>
         <span class="small">{{ e.ts.strftime("%Y-%m-%d %H:%M:%S") if e.ts else "" }}</span>
@@ -690,7 +693,7 @@
         {% for img in mobile_image_urls %}
           {% set img_url = img.strip() %}
           {% if img_url %}
-          <a href="{{ img_url }}" target="_blank" rel="noreferrer">
+          <a href="{{ img_url }}" target="_blank" rel="noreferrer" class="mobile-card-image-link" data-image-url="{{ img_url }}">
             <img src="{{ img_url }}" alt="event image" style="max-width:100%; max-height:180px; object-fit:cover; border-radius:8px;" />
           </a>
           {% endif %}
@@ -712,14 +715,17 @@
 {% if can_write %}
   <input id="event-image-file-input" type="file" accept="image/*" multiple style="display:none" />
   <input id="event-image-file-input-camera" type="file" accept="image/*" capture="environment" style="display:none" />
+  {% if ENABLE_QUICK_IMAGE_ATTACH %}
   <div class="quick-attach-fab">
     <button id="quick-attach-gallery-fab" type="button">Gallery</button>
     <button id="quick-attach-camera-fab" type="button">Camera</button>
   </div>
+  {% endif %}
 {% endif %}
 
 <script>
   const canWrite = {{ "true" if can_write else "false" }};
+  const ENABLE_QUICK_IMAGE_ATTACH = {{ "true" if ENABLE_QUICK_IMAGE_ATTACH else "false" }};
   const baseCurrencySymbol = {{ data.base_currency_symbol | tojson }};
   const krwCurrencySymbol = {{ data.krw_currency_symbol | tojson }};
 
@@ -1819,10 +1825,10 @@
   function buildEventCardHtml(e) {
     const imageUrls = getEventImageUrls(e);
     const imageBlocks = imageUrls
-      .map((url) => `<a href="${escapeHtml(url)}" target="_blank" rel="noreferrer"><img src="${escapeHtml(url)}" alt="event image" style="max-width:100%; max-height:180px; object-fit:cover; border-radius:8px;" /></a>`)
+      .map((url) => `<a href="${escapeHtml(url)}" target="_blank" rel="noreferrer" class="mobile-card-image-link" data-image-url="${escapeHtml(url)}"><img src="${escapeHtml(url)}" alt="event image" style="max-width:100%; max-height:180px; object-fit:cover; border-radius:8px;" /></a>`)
       .join("");
     return `
-      <article class="journal-mobile-card" data-event-id="${escapeHtml(e.id || "")}">
+      <article class="journal-mobile-card" data-event-id="${escapeHtml(e.id || "")}" data-event-image-urls="${escapeHtml(JSON.stringify(imageUrls))}">
         <div class="journal-mobile-card-head">
           <strong>#${escapeHtml(e.id || "")} ${escapeHtml(e.type || "")}</strong>
           <span class="small">${escapeHtml(formatTs(e.ts))}</span>
@@ -2336,47 +2342,49 @@
       }
     });
 
-    quickAttachGalleryBtn?.addEventListener("click", () => {
-      try {
-        attachTargetEventId = getQuickAttachEventId();
-        setSelectedEventId(attachTargetEventId);
-        setQuickAttachStatus("");
-        eventImageFileInput?.click();
-      } catch (err) {
-        setQuickAttachStatus(err.message, true);
-      }
-    });
+    if (ENABLE_QUICK_IMAGE_ATTACH) {
+      quickAttachGalleryBtn?.addEventListener("click", () => {
+        try {
+          attachTargetEventId = getQuickAttachEventId();
+          setSelectedEventId(attachTargetEventId);
+          setQuickAttachStatus("");
+          eventImageFileInput?.click();
+        } catch (err) {
+          setQuickAttachStatus(err.message, true);
+        }
+      });
 
-    quickAttachCameraBtn?.addEventListener("click", () => {
-      try {
-        attachTargetEventId = getQuickAttachEventId();
-        setSelectedEventId(attachTargetEventId);
-        setQuickAttachStatus("");
-        eventImageFileInputCamera?.click();
-      } catch (err) {
-        setQuickAttachStatus(err.message, true);
-      }
-    });
+      quickAttachCameraBtn?.addEventListener("click", () => {
+        try {
+          attachTargetEventId = getQuickAttachEventId();
+          setSelectedEventId(attachTargetEventId);
+          setQuickAttachStatus("");
+          eventImageFileInputCamera?.click();
+        } catch (err) {
+          setQuickAttachStatus(err.message, true);
+        }
+      });
 
-    quickAttachGalleryFab?.addEventListener("click", () => quickAttachGalleryBtn?.click());
-    quickAttachCameraFab?.addEventListener("click", () => quickAttachCameraBtn?.click());
+      quickAttachGalleryFab?.addEventListener("click", () => quickAttachGalleryBtn?.click());
+      quickAttachCameraFab?.addEventListener("click", () => quickAttachCameraBtn?.click());
 
-    quickAttachLatestBtn?.addEventListener("click", () => {
-      const firstRow = document.querySelector("tr.journal-row");
-      if (!firstRow?.dataset?.eventId) {
-        setQuickAttachStatus("현재 페이지에 이벤트가 없습니다.", true);
-        return;
-      }
-      setSelectedEventId(firstRow.dataset.eventId);
-      setQuickAttachStatus(`Event #${firstRow.dataset.eventId} 선택됨`);
-    });
+      quickAttachLatestBtn?.addEventListener("click", () => {
+        const firstRow = document.querySelector("tr.journal-row");
+        if (!firstRow?.dataset?.eventId) {
+          setQuickAttachStatus("현재 페이지에 이벤트가 없습니다.", true);
+          return;
+        }
+        setSelectedEventId(firstRow.dataset.eventId);
+        setQuickAttachStatus(`Event #${firstRow.dataset.eventId} 선택됨`);
+      });
 
-    quickAttachEventSelect?.addEventListener("change", () => {
-      setSelectedEventId(quickAttachEventSelect.value || null);
-      if (selectedEventId) {
-        setQuickAttachStatus(`Event #${selectedEventId} 선택됨`);
-      }
-    });
+      quickAttachEventSelect?.addEventListener("change", () => {
+        setSelectedEventId(quickAttachEventSelect.value || null);
+        if (selectedEventId) {
+          setQuickAttachStatus(`Event #${selectedEventId} 선택됨`);
+        }
+      });
+    }
 
     quickAttachEventIdInput?.addEventListener("input", () => {
       const value = (quickAttachEventIdInput.value || "").trim();
@@ -2390,11 +2398,116 @@
       setQuickAttachStatus(`Event #${row.dataset.eventId} 선택됨`);
     });
     journalMobileCards?.addEventListener("click", (e) => {
+      // Long-press prevents default, but just in case we need to block normal click if we just deleted
+      if (e.target.closest(".mobile-card-image-link") && e.target.closest(".mobile-card-image-link").hasAttribute("data-long-pressed")) {
+        e.preventDefault();
+        e.target.closest(".mobile-card-image-link").removeAttribute("data-long-pressed");
+        return;
+      }
+
       const card = e.target?.closest ? e.target.closest(".journal-mobile-card") : null;
       if (!card?.dataset?.eventId) return;
       setSelectedEventId(card.dataset.eventId);
-      setQuickAttachStatus(`Event #${card.dataset.eventId} 선택됨`);
+      if (ENABLE_QUICK_IMAGE_ATTACH) {
+        setQuickAttachStatus(`Event #${card.dataset.eventId} 선택됨`);
+      }
     });
+
+    if (canWrite) {
+      let longPressTimer = null;
+      let startX = 0;
+      let startY = 0;
+
+      const clearLongPress = () => {
+        if (longPressTimer) {
+          clearTimeout(longPressTimer);
+          longPressTimer = null;
+        }
+      };
+
+      journalMobileCards?.addEventListener("pointerdown", (e) => {
+        const link = e.target.closest(".mobile-card-image-link");
+        if (!link) return;
+        if (e.button !== 0 && e.pointerType === "mouse") return;
+        startX = e.clientX;
+        startY = e.clientY;
+        clearLongPress();
+        longPressTimer = setTimeout(async () => {
+          longPressTimer = null;
+          link.setAttribute("data-long-pressed", "true");
+          const imageUrl = link.dataset.imageUrl;
+          const card = link.closest(".journal-mobile-card");
+          const eventId = card?.dataset?.eventId;
+
+          try {
+            if (!imageUrl || !eventId) {
+              throw new Error("이미지 URL 또는 이벤트 ID를 찾을 수 없습니다.");
+            }
+            if (!window.confirm("이 사진을 삭제하시겠습니까?")) {
+              return;
+            }
+
+            // 1. Get current image urls safely from data-event-image-urls
+            const rawUrls = card.dataset.eventImageUrls;
+            let currentUrls = [];
+            if (rawUrls) {
+              try {
+                const parsed = JSON.parse(rawUrls);
+                if (Array.isArray(parsed)) {
+                  currentUrls = parsed.map(u => String(u || "").trim()).filter(Boolean);
+                }
+              } catch (_) {}
+            }
+
+            // If we fail to get current list (or it has length 0), abort with error
+            if (!currentUrls || currentUrls.length === 0) {
+              throw new Error("이벤트 이미지 목록을 가져오지 못했습니다.");
+            }
+
+            // 2. Only allow delete if target exists in currentUrls
+            if (!currentUrls.includes(imageUrl)) {
+              throw new Error("삭제할 이미지가 현재 이미지 목록에 존재하지 않습니다.");
+            }
+
+            const nextUrls = currentUrls.filter((url) => url !== imageUrl);
+
+            // 3. image_url only PATCH (explicitly set null if empty to prevent accidental omissions)
+            await jsonRequest(`/api/events/${eventId}`, "PATCH", {
+              image_url: nextUrls.length > 0 ? serializeEventImageUrls(nextUrls) : null,
+            });
+
+            await loadJournalPage(journalState.page, false);
+          } catch (err) {
+            window.alert(`Image delete failed: ${err.message}`);
+          } finally {
+            clearLongPress();
+            setTimeout(() => {
+              link.removeAttribute("data-long-pressed");
+            }, 100);
+          }
+        }, 600);
+      });
+
+      journalMobileCards?.addEventListener("pointermove", (e) => {
+        if (longPressTimer) {
+          const dx = e.clientX - startX;
+          const dy = e.clientY - startY;
+          if (Math.sqrt(dx * dx + dy * dy) > 10) {
+            clearLongPress();
+          }
+        }
+      });
+
+      journalMobileCards?.addEventListener("pointerup", clearLongPress);
+      journalMobileCards?.addEventListener("pointercancel", clearLongPress);
+      journalMobileCards?.addEventListener("pointerleave", clearLongPress);
+
+      journalMobileCards?.addEventListener("contextmenu", (e) => {
+        if (e.target.closest(".mobile-card-image-link")) {
+          e.preventDefault();
+        }
+      });
+    }
     journalTbody?.addEventListener("dblclick", (e) => {
       const cell = e.target?.closest ? e.target.closest(".event-image-cell") : null;
       if (!cell) return;

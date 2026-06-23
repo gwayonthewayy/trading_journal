@@ -678,6 +678,13 @@ def page_stats(request: Request, session: Session = Depends(get_session)) -> HTM
         return RedirectResponse(url="/access", status_code=303)
 
     data = build_stats(session)
+    # Embed monthly-check rows so stats.html can render them inline
+    try:
+        from app.services import build_monthly_check_page as _build_mc
+        mc_data = _build_mc(session)
+        data["monthly_check_rows"] = mc_data.get("rows", [])
+    except Exception:
+        data["monthly_check_rows"] = []
     benchmark_prefetch: dict[str, dict] = {}
     for symbol in data.get("benchmark_symbols", []):
         try:
@@ -715,20 +722,9 @@ def page_stats(request: Request, session: Session = Depends(get_session)) -> HTM
 
 
 @app.get("/monthly-check", response_class=HTMLResponse)
-def page_monthly_check(request: Request, session: Session = Depends(get_session)) -> HTMLResponse:
-    role = _require_viewer_page_role(request)
-    if role is None:
-        return RedirectResponse(url="/access", status_code=303)
-
-    data = build_monthly_check_page(session)
-    return templates.TemplateResponse(
-        "monthly_check.html",
-        {
-            "request": request,
-            "data": data,
-            **_template_auth_context(request),
-        },
-    )
+def page_monthly_check(request: Request) -> HTMLResponse:
+    """Legacy URL: redirect to /stats#stats-monthly-check (A3 integration)."""
+    return RedirectResponse(url="/stats#stats-monthly-check", status_code=301)
 
 
 @app.get("/trades/{trade_group_id}", response_class=HTMLResponse)

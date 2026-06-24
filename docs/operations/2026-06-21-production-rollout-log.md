@@ -185,3 +185,24 @@
   - 127.0.0.1:8000 LISTEN confirmed.
   - /access HTTP 200 confirmed.
 - **Note:** No token values or actual secrets are recorded in this log or git history.
+
+### 2026-06-24T12:40:00Z - Auth Login Foundation Merge, Rollout and Operational Verification
+- **Actions Performed:**
+  - Merged PR #3 (feat: auth login foundation) into main. (Squash merge, Merge commit SHA: `67df55fe930f84b1d5c4e19be37f4b4f5d8b80e0`)
+  - Appended `TJ_ADMIN_USERNAME=gyu123` securely to `.env.runtime` on friend-server.
+  - Performed cryptographic secret rotation atomically:
+    - Rotated `TJ_SIGNING_SECRET` with a cryptographically secure random 32-byte hex.
+    - Rotated `TJ_VIEWER_TOKEN` and `TJ_ADMIN_TOKEN` with cryptographically secure random url-safe base64 tokens.
+    - Incremented `TJ_AUTH_VERSION` to `4` to invalidate all active session cookies.
+  - The `trading-journal.service` was restarted on friend-server by the user.
+  - Local port forwarding verified for `127.0.0.1:8000`:
+    - Renders login page with multi-user elements.
+    - Verified redirection from protected pages (e.g., `/journal`, `/portfolio`, `/stats`) to `/login` with an informative toast message.
+    - Verified login failure (wrong credentials) displays an appropriate warning message ("Invalid username or password").
+    - Verified Viewer/Admin token fallback logic and page unlock actions are preserved.
+- **Verification Images Captured:**
+  - Login redirection: `login_redirect_1782231006406.png`
+  - Login failure warning: `login_error_message_1782231034318.png`
+  - Production check video: `production_login_check_1782230965740.webp`
+- **Note:** All raw rotated secrets, credentials, password hashes, and cookie data are strictly excluded from logs.
+
